@@ -1,18 +1,23 @@
+import imageio
+import os
 import gym
-import rware
+
+
+def save_frames_as_gif(frames, path='/home/mario.cantero/Documents/Research/rl_research/SavedRenders', filename='gym_animation.gif'):
+    imageio.mimwrite(os.path.join(path, filename), frames, duration=20, format='gif')
 
 if __name__ == '__main__':
-    #env = gym.make("rware:rware-tiny-2ag-v1")
-    #env = gym.make('rware:rware-tiny-2ag-v1')
-    env = gym.make("rware-tiny-2ag-v1")
-    #env = gym.make('CartPole-v0')
-    obs = env.reset()  # a tuple of observations
-    done = [False, False]
-    while (not done[0]) & (not done[1]):
-        actions = env.action_space.sample()  # the action space can be sampled
-        print(actions)  # (1, 0)
-        n_obs, reward, done, info = env.step(actions)
-        #env.render()
-        print(done)    # [False, False]
-        print(reward)  # [0.0, 0.0]
-    #env.close()
+    env_name = "procgen:procgen-bossfight-v0"
+    env = gym.make(env_name, render_mode="rgb_array")
+    obs = env.reset()
+    frames = []
+    iter = 0
+    while True:
+        obs, rew, done, info = env.step(env.action_space.sample())
+        print(rew, 'step: ', iter)
+        iter += 1
+        #frame = env.render()
+        frames.append(obs)
+        if done:
+            break
+    save_frames_as_gif(frames, filename='pruebita')
