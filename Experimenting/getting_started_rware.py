@@ -20,4 +20,4 @@ if __name__ == '__main__':
         frames.append(obs)
         if done:
             break
-    save_frames_as_gif(frames, filename='pruebita')
+    save_frames_as_gif(frames, filename='pruebita2.gif')
