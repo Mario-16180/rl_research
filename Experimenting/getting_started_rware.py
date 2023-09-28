@@ -2,10 +2,36 @@ import imageio
 import os
 import gym
 import torch
+import torch.nn as nn
 import wandb
 
 def save_frames_as_gif(frames, path='/home/mario.cantero/Documents/Research/rl_research/SavedRenders', filename='gym_animation.gif'):
     imageio.mimwrite(os.path.join(path, filename), frames, duration=20, format='gif')
+
+class q_network(nn.Module):
+    def __init__(self, env):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Conv2d(4, 32, 8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(3136, 512),
+            nn.ReLU(),
+            nn.Linear(512, env.single_action_space.n),
+        )
+
+    def forward(self, x):
+        return self.network(x / 255.0)
+
+def train_new_cl_algo():
+    pass
+
+def train_vanilla_dqn(env, model):
+    pass
 
 if __name__ == '__main__':
 
