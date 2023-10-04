@@ -27,32 +27,34 @@ class memory():
             action = environment.action_space.sample()
             next_frame, reward, done, _ = environment.step(action)
 
-            # Stack the frames
-            previous_stacked_frames = stacked_frames_object.stacked_frames_array
-            stacked_frames_object.append_frame_to_stack(next_frame)
+            # Save current state
+            current_stacked_frames = stacked_frames_object.stacked_frames_array
         
             # If it's the end of the episode
             if done:
                 # End of episode
-                next_stacked_frames = np.zeros(previous_stacked_frames.shape)
+                next_frame = np.zeros((64,64,3), dtype=np.uint8)
+                stacked_frames_object.append_frame_to_stack(next_frame)
+                next_stacked_frames = stacked_frames_object.stacked_frames_array
                 
                 # Add experience to replay memory
-                self.add((previous_stacked_frames, action, reward, next_stacked_frames, done))
+                self.add((current_stacked_frames, action, reward, next_stacked_frames, done))
                 
                 # Start a new episode
                 initial_frame = environment.reset()
                 
-                # Stack the frames
-                stacked_frames, stacked_frames_deque = stack_frames(stacked_frames_deque, initial_frame, True, environment)
+                # Initialize stack
+                stacked_frames_object.initialize_stack(initial_frame)
                 
             else:
+                stacked_frames_object.append_frame_to_stack(next_frame)
                 next_stacked_frames = stacked_frames_object.stacked_frames_array
 
                 # Add experience to replay memory
-                self.add((previous_stacked_frames, action, reward, next_stacked_frames, done))
-                
-                # Update current state
-                stacked_frames = next_stacked_frames
+                self.add((current_stacked_frames, action, reward, next_stacked_frames, done))
 
 if __name__ == '__main__':
-    pass
+    env = gym.make('procgen:procgen-bossfight-v0', num_levels=1, start_level=0)
+    memory_object = memory(max_size=10000)
+    memory_object.populate_memory_random(env, k_initial_experiences=10000)
+    print(len(memory_object.buffer_deque))
