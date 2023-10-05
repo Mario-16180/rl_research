@@ -57,7 +57,7 @@ class impala_cnn(nn.Module):
         )
     
     def forward(self, x):
-        # Convert numpy array of shape (4, 64, 64) to torch tensor of shape (1, 4, 64, 64)
+        # Convert numpy array to torch tensor (1, 4, 64, 64)
         x = torch.Tensor(x)
         # Stack of 4 images to float32 and normalized
         x = x.float() / 255.0

@@ -6,7 +6,7 @@ class stacked_frames_class():
         self.stack_size = stack_size
 
     def initialize_stack(self, initial_frame):
-        self.stacked_frames_deque  =  deque([np.zeros((64,64), dtype=np.uint8) for _ in range(self.stack_size)], maxlen=self.stack_size)
+        self.stacked_frames_deque = deque([np.zeros((64,64), dtype=np.uint8) for _ in range(self.stack_size)], maxlen=self.stack_size)
         initial_frame = self.preprocess_new_frame(initial_frame)
         for _ in range(self.stack_size):
             self.stacked_frames_deque.append(initial_frame)
