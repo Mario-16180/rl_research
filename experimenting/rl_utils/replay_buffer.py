@@ -1,5 +1,5 @@
 from collections import deque
-from stack_frames import stacked_frames_class
+from rl_utils.stack_frames import stacked_frames_class
 import numpy as np
 import gym
 
@@ -12,7 +12,7 @@ class memory():
         self.buffer_deque.append(experience)
     
     def sample(self, batch_size):
-        index = np.random.choice(np.arange(self.buffer_size), size = batch_size, replace = False)
+        index = np.random.choice(np.arange(len(self.buffer_deque)), size = batch_size, replace = False)
         return [self.buffer_deque[i] for i in index]
 
     def populate_memory_random(self, environment, k_initial_experiences):

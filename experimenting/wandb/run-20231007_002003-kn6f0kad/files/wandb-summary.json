@@ -1,0 +1,1 @@
+{"train/step": 20, "train/episode": 2, "train/reward": 0.0, "train/reward_std": 0.0, "train/loss": 0.0004443278885446489, "train/squared_norm_gradients": 174.78994750976562, "_timestamp": 1696623616.352758, "_runtime": 12.987144947052002, "_step": 1, "_wandb": {"runtime": 12}}

@@ -50,7 +50,7 @@ class impala_cnn(nn.Module):
         # Flattening and MLP
         self.flatten_to_mlp = nn.Sequential(
             nn.ReLU(),
-            nn.Flatten(start_dim=0),
+            nn.Flatten(start_dim=1),
             nn.Linear(800, 256),
             nn.ReLU(),
             nn.Linear(256, self.action_space)
@@ -77,23 +77,9 @@ class impala_cnn(nn.Module):
         x = self.flatten_to_mlp(x)
         return x
     
-    def save_model(self):
-        pass
+    def save_model(self, path="trained_models/impala_cnn.pt"):
+        # Save the model
+        torch.save(self.state_dict(), path)
 
     def load_model(self):
         pass
-
-"""
-if __name__ == '__main__':
-    env_name = "procgen:procgen-bossfight-v0"
-    env = gym.make(env_name)
-    print(env.action_space.sample(), env.action_space.n)
-    obs = env.reset()
- 
-    model = impala_cnn(env)
-    model.build_network()
-    print(model)
-    x = torch.rand((10, 4, 64, 64))
-    print(model(x).shape)
-    print(model(x))
-"""
