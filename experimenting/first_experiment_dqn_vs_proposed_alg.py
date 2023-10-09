@@ -57,8 +57,8 @@ def train_new_cl_algo():
 
 def train_vanilla_dqn(name_env, episodes, max_steps, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min,  
                       optimizer=None, criterion=None, learning_rate=0.0001, tau=0.01, model=None, replay_buffer=None, 
-                      num_levels=0, num_levels_eval=20):
-    env = gym.make(name_env, start_level=0, num_levels=num_levels)
+                      num_levels=0, num_levels_eval=20, start_level=0, background=False, start_level_test=42):
+    env = gym.make(name_env, start_level=start_level, num_levels=num_levels, use_backgrounds=background)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # Initialize model and target model
     if model is None:
@@ -72,7 +72,7 @@ def train_vanilla_dqn(name_env, episodes, max_steps, batch_size, gamma, epsilon_
 
     # Initialize replay buffer if it's empty
     if replay_buffer is None:
-        replay_buffer = memory(max_size=200000)
+        replay_buffer = memory(max_size=250000)
         replay_buffer.populate_memory_random(env, k_initial_experiences=20000)
 
     if optimizer is None:
@@ -101,7 +101,10 @@ def train_vanilla_dqn(name_env, episodes, max_steps, batch_size, gamma, epsilon_
     "memory_len": replay_buffer.buffer_size,
     "optimizer": optimizer,
     "criterion": criterion,
-    "device": device,},
+    "device": device,
+    "num_levels": num_levels,
+    "num_levels_eval": num_levels_eval,
+    "background": background,},
     )
     run.define_metric("train/step")
     run.define_metric("train/*", step_metric="train/step")
@@ -115,6 +118,7 @@ def train_vanilla_dqn(name_env, episodes, max_steps, batch_size, gamma, epsilon_
         stacked_frames.initialize_stack(obs)
 
         done = False
+        train_reward = 0
         while not done:
             action = select_action(model_policy, env, stacked_frames.stacked_frames_array, epsilon_start, epsilon_decay, epsilon_min, current_step, device)
             action = action.item()
@@ -137,45 +141,55 @@ def train_vanilla_dqn(name_env, episodes, max_steps, batch_size, gamma, epsilon_
 
             current_step += 1
 
-            if current_step % 10000 == 0:
-                squared_norm_gradients = 0
-                for w in model_policy.parameters():
-                    squared_norm_gradients += torch.norm(w)**2
-                reward_test = []
-                for _ in range(20):
-                    env = gym.make(name_env, start_level=0, num_levels=num_levels_eval)
-                    obs = env.reset()
-                    stacked_frames_test = stacked_frames_class()
-                    stacked_frames_test.initialize_stack(obs)
-                    done = False
-                    reward_acc = 0
-                    while not done:
-                        action = select_action(model_policy, env, stacked_frames_test.stacked_frames_array, 0.05, 1, 0.05, current_step, device)
-                        action = action.item()
-                        next_obs, reward, done, _ = env.step(action)
-                        stacked_frames_test.append_frame_to_stack(next_obs)
-                        if done:
-                            break
-                        reward_acc += reward
-                    reward_test.append(reward_acc)
-                env = gym.make(name_env, start_level=0, num_levels=num_levels)
-                # Logging metrics to wandb
-                log_dict = {
-                    "train/step": current_step,
-                    "train/episode": episode,
-                    "train/reward": np.mean(reward_test),
-                    "train/reward_std": np.std(reward_test),
-                    "train/loss": loss,
-                    "train/squared_norm_gradients": squared_norm_gradients,
-                }
-                run.log(log_dict)
+            train_reward += reward
+
+        # Logging metrics to wandb after each episode
+        squared_norm_gradients = 0
+        for w in model_policy.parameters():
+            squared_norm_gradients += torch.norm(w)**2
+        log_dict = {
+            "train/step": current_step,
+            "train/training_reward": train_reward,
+            "train/training_episode": episode,
+            "train/loss": loss,
+            "train/squared_norm_gradients": squared_norm_gradients,
+        }
+        run.log(log_dict)
+
+        if current_step % 500 == 0:
+            reward_test = []
+            for _ in range(20):
+                env = gym.make(name_env, start_level=start_level_test, num_levels=num_levels_eval, use_backgrounds=background)
+                obs = env.reset()
+                stacked_frames_test = stacked_frames_class()
+                stacked_frames_test.initialize_stack(obs)
+                done = False
+                reward_acc = 0
+                while not done:
+                    action = select_action(model_policy, env, stacked_frames_test.stacked_frames_array, 0.05, 1, 0.05, current_step, device)
+                    action = action.item()
+                    next_obs, reward, done, _ = env.step(action)
+                    stacked_frames_test.append_frame_to_stack(next_obs)
+                    if done:
+                        break
+                    reward_acc += reward
+                reward_test.append(reward_acc)
+            env = gym.make(name_env, start_level=start_level, num_levels=num_levels, use_backgrounds=background)
+            # Logging metrics to wandb
+            log_dict = {
+                "train/step": current_step,
+                "train/test_episode": episode,
+                "train/testing_reward": np.mean(reward_test),
+                "train/testing_reward_std": np.std(reward_test),
+            }
+            run.log(log_dict)
     
     run.finish()
     return model_policy, replay_buffer, run_name
 
 if __name__ == '__main__':
     env_name = "procgen:procgen-bossfight-v0"
-    learned_model, replay_buffer, run_name = train_vanilla_dqn(env_name, episodes=10000, max_steps=1000, batch_size=32, gamma=0.99, 
-                                                     epsilon_start=0.99, epsilon_decay=100000, epsilon_min=0.05, learning_rate=0.001, 
-                                                     num_levels=1, num_levels_eval=1)
+    learned_model, replay_buffer, run_name = train_vanilla_dqn(env_name, episodes=5000, max_steps=1000, batch_size=32, gamma=0.99, 
+                                                     epsilon_start=0.99, epsilon_decay=10000, epsilon_min=0.05, learning_rate=0.001, 
+                                                     num_levels=0, num_levels_eval=20, background=False, start_level=0, start_level_test=42)
     learned_model.save_model(path=f"models/trained_models/impala_cnn_{run_name}.pt")
