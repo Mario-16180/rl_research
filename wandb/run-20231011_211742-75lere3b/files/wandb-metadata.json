@@ -1,0 +1,208 @@
+{
+    "os": "Linux-5.15.133-ql-generic-13.0-9-x86_64-with-glibc2.17",
+    "python": "3.8.18",
+    "heartbeatAt": "2023-10-11T17:17:43.891788",
+    "startedAt": "2023-10-11T17:17:42.585816",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/mario.cantero/Documents/Research/rl_research/experimenting/rl_utils/testing_groups_wandb.py",
+    "codePathLocal": "experimenting/rl_utils/testing_groups_wandb.py",
+    "codePath": "experimenting/rl_utils/testing_groups_wandb.py",
+    "git": {
+        "remote": "https://github.com/Mario-16180/rl_research",
+        "commit": "b5b41eb3086b01931e1871d55bff93b27dfa9823"
+    },
+    "email": "mario.alan.16180@gmail.com",
+    "root": "/home/mario.cantero/Documents/Research/rl_research",
+    "host": "ws-l5-002",
+    "username": "mario.cantero",
+    "executable": "/home/mario.cantero/.conda/envs/rl_research/bin/python",
+    "cpu_count": 16,
+    "cpu_count_logical": 32,
+    "cpu_freq": {
+        "current": 2467.60846875,
+        "min": 1000.0,
+        "max": 3500.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 3122.666,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        },
+        {
+            "current": 2500.0,
+            "min": 1000.0,
+            "max": 3500.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 1.0,
+            "used": 0.01033782958984375
+        }
+    },
+    "gpu": "Quadro RTX 6000",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "Quadro RTX 6000",
+            "memory_total": 25769803776
+        }
+    ],
+    "memory": {
+        "total": 125.54960632324219
+    }
+}

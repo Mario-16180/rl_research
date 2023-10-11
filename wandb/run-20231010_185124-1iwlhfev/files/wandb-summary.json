@@ -1,0 +1,1 @@
+{"epoch": 99, "train/reward": 0.6525046178485268, "train/loss": 0.1522630595160441, "_timestamp": 1696949485.2213712, "_runtime": 1.084144115447998, "_step": 299, "eval/reward/episode_": 19.302656849799423, "_wandb": {"runtime": 0}}

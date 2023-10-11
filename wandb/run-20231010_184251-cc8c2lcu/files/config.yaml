@@ -1,0 +1,129 @@
+wandb_version: 1
+
+learning_rate:
+  desc: null
+  value: 0.02
+architecture:
+  desc: null
+  value: CNN
+dataset:
+  desc: null
+  value: CIFAR-100
+epochs:
+  desc: null
+  value: 100
+_wandb:
+  desc: null
+  value:
+    python_version: 3.8.18
+    cli_version: 0.15.11
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1696948971.203188
+    t:
+      1:
+      - 55
+      2:
+      - 55
+      3:
+      - 2
+      - 7
+      - 16
+      - 23
+      4: 3.8.18
+      5: 0.15.11
+      8:
+      - 5
+      13: linux-x86_64
+    m:
+    - 1: epoch
+      6:
+      - 3
+    - 1: train/reward
+      5: 1
+      6:
+      - 1
+    - 1: train/loss
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_0
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_1
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_2
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_3
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_4
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_5
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_6
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_7
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_8
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_9
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_10
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_11
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_12
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_13
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_14
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_15
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_16
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_17
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_18
+      5: 1
+      6:
+      - 1
+    - 1: eval/reward/episode_19
+      5: 1
+      6:
+      - 1

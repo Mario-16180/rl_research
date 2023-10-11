@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import math
+import random
 
 class impala_cnn(nn.Module):
     """ This model was used in the paper "IMPALA: Scalable Distributed Deep-RL with
@@ -77,9 +79,19 @@ class impala_cnn(nn.Module):
         x = self.flatten_to_mlp(x)
         return x
     
-    def save_model(self, path="trained_models/impala_cnn.pt"):
+    def save_model(self, episode, optimizer, loss, buffer, path):
         # Save the model
-        torch.save(self.state_dict(), path)
+        torch.save({"episode": episode, "model_state_dict": self.state_dict(), "buffer": buffer, "optimizer_state_dict": optimizer.state_dict(), 
+                    "loss": loss}, path)
 
-    def load_model(self):
-        pass
+    def select_action(self, env, state, epsilon_start, epsilon_decay, epsilon_min, current_step, device):
+        sample_for_probability = random.random()
+        eps_threshold = epsilon_min + (epsilon_start - epsilon_min) * math.exp(-1. * current_step / epsilon_decay)
+        if sample_for_probability > eps_threshold:
+            with torch.no_grad():
+                state = torch.tensor([state], device=device, dtype=torch.float32)
+                action = self.forward(state).max(1)[1].view(1, 1)
+                return action, eps_threshold
+        else:
+            action = torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+            return action, eps_threshold
