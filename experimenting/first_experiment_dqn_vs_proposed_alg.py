@@ -12,7 +12,6 @@ from tqdm import tqdm
 from models.impala_cnn_architecture import impala_cnn
 from rl_utils.stack_frames import stacked_frames_class
 from rl_utils.replay_buffer import memory
-from rl_utils.replay_buffer import memory_with_curriculum
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -20,9 +19,9 @@ warnings.filterwarnings('ignore', category=UserWarning)
 def save_frames_as_gif(frames, path='/home/mario.cantero/Documents/Research/rl_research/SavedRenders', filename='gym_animation.gif'):
     imageio.mimwrite(os.path.join(path, filename), frames, duration=20, format='gif')
 
-def perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device):
+def perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size):
     state_batch = torch.cat([torch.tensor([s], device=device, dtype=torch.float32) for (s, a, r, s_, d) in minibatch])
-    action_batch = torch.cat([torch.tensor([a], device=device, dtype=torch.int64) for (s, a, r, s_, d) in minibatch]).reshape([32,1])
+    action_batch = torch.cat([torch.tensor([a], device=device, dtype=torch.int64) for (s, a, r, s_, d) in minibatch]).reshape([batch_size,1])
     reward_batch = torch.cat([torch.tensor([r], device=device, dtype=torch.float32) for (s, a, r, s_, d) in minibatch])
     next_state_batch = torch.cat([torch.tensor([s_], device=device, dtype=torch.float32) for (s, a, r, s_, d) in minibatch])
     done_batch = torch.cat([torch.tensor([d], device=device, dtype=torch.bool) for (s, a, r, s_, d) in minibatch])
@@ -105,21 +104,16 @@ def train_vanilla_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsi
         current_episode = checkpoint['episode']
         loss = checkpoint['loss']
         replay_buffer = checkpoint['buffer']
-    
     ##### End of wandb login
 
     current_step = 0
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
     for episode in tqdm(range(current_episode, episodes)):
         obs = env.reset()
         stacked_frames = stacked_frames_class()
         stacked_frames.initialize_stack(obs)
-
         done = False
         train_reward = 0
-        # Just to see the effect of increasing the learning rate
-        if episode % 500 == 0:
-            optimizer.lr *= 2
-
         while not done:
             action, eps = model_policy.select_action(env, stacked_frames.stacked_frames_array, epsilon_start, epsilon_decay, epsilon_min, current_step, device)
             action = action.item()
@@ -134,7 +128,7 @@ def train_vanilla_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsi
             
             minibatch = replay_buffer.sample(batch_size)
 
-            loss, optimizer = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device)
+            loss, optimizer = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size)
 
             # Update target network
             policy_weights = model_policy.state_dict()
@@ -177,10 +171,10 @@ def train_vanilla_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsi
                 "train/action_taken": action,
                 "train/epsilon": eps,
                 "train/replay_buffer_#ofexperiences": len(replay_buffer.buffer_deque),
-                "train/learning_rate": optimizer.lr
+                "train/learning_rate": scheduler.get_last_lr()[0],
             }
             run.log(log_dict)
-
+        scheduler.step()
     run.save
     run.finish()
     return model_policy, replay_buffer, run_name
@@ -188,5 +182,5 @@ def train_vanilla_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsi
 if __name__ == '__main__':
     env_name = "procgen:procgen-bossfight-v0"
     learned_model, replay_buffer, run_name = train_vanilla_dqn(env_name, episodes=5000, batch_size=512, gamma=0.99, 
-                                                                epsilon_start=0.99, epsilon_decay=10000, epsilon_min=0.05, learning_rate=0.00005, 
+                                                                epsilon_start=0.99, epsilon_decay=10000, epsilon_min=0.05, learning_rate=0.5, 
                                                                 num_levels=0, num_levels_eval=20, background=False, start_level=0, start_level_test=42)
