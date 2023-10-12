@@ -52,7 +52,7 @@ def train_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_deca
     rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
     min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
     max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
-    normalize_reward = lambda r: (r - min_r) / (max_r - max_r)
+    normalize_reward = lambda r: (r - min_r) / (max_r - min_r)
     env = gym.make(name_env, start_level=start_level, num_levels=num_levels, use_backgrounds=background)
     env_eval = gym.make(name_env, start_level=start_level_test, num_levels=num_levels_eval, use_backgrounds=background)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

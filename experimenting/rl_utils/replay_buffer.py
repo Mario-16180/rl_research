@@ -21,7 +21,7 @@ class memory_with_curriculum():
         rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
         min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
         max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
-        normalize_reward = lambda r: (r - min_r) / (max_r - max_r)
+        normalize_reward = lambda r: (r - min_r) / (max_r - min_r)
         for i in range(k_initial_experiences):
             # First initializing transition
             if i == 0:
@@ -76,7 +76,7 @@ class memory():
         rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
         min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
         max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
-        normalize_reward = lambda r: (r - min_r) / (max_r - max_r)
+        normalize_reward = lambda r: (r - min_r) / (max_r - min_r)
         for i in range(k_initial_experiences):
             # First initializing transition
             if i == 0:
