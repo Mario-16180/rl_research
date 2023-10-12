@@ -49,7 +49,7 @@ def train_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_deca
                       optimizer=None, criterion=None, learning_rate=0.0001, tau=0.001, model=None, replay_buffer=None, 
                       num_levels=500, num_levels_eval=20, start_level=0, start_level_test=1024, background=False,
                       initial_random_experiences=5000, memory_capacity=50000, resume=False, project_name="rl_research_mbzuai"):
-    rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
+    rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
     min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
     max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
     normalize_reward = lambda r: (r - min_r) / (max_r - max_r)

@@ -18,7 +18,7 @@ class memory_with_curriculum():
         return [self.buffer_deque[i] for i in index]
 
     def populate_memory_model(self, model, environment, name_env, k_initial_experiences):
-        rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
+        rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
         min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
         max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
         normalize_reward = lambda r: (r - min_r) / (max_r - max_r)
@@ -73,7 +73,7 @@ class memory():
         return [self.buffer_deque[i] for i in index]
 
     def populate_memory_random(self, environment, name_env, k_initial_experiences):
-        rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
+        rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
         min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
         max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
         normalize_reward = lambda r: (r - min_r) / (max_r - max_r)
