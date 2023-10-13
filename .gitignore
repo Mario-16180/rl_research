@@ -160,8 +160,8 @@ cython_debug/
 #.idea/
 
 # wandb
-.wandb/
 wandb/
-/wandb
+experimenting/wandb
 
+# Ignore checkpoint files
 experimenting/models/trained_models/checkpoint.tar

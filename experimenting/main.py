@@ -188,4 +188,5 @@ if __name__ == '__main__':
     env_name = "procgen:procgen-bossfight-v0"
     learned_model, replay_buffer, run_name = train_dqn(env_name, episodes=5000, batch_size=64, gamma=0.99, 
                                                         epsilon_start=0.99, epsilon_decay=150000, epsilon_min=0.05, learning_rate=0.001, 
-                                                        num_levels=500, num_levels_eval=20, background=False, start_level=0, start_level_test=42)
+                                                        num_levels=500, num_levels_eval=20, background=False, start_level=0, start_level_test=42,
+                                                        resume=True)
