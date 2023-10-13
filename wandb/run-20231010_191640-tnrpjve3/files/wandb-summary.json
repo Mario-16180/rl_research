@@ -1,1 +1,0 @@
-{"epoch": 10, "train/reward": 0.734836868732512, "train/loss": 0.06141077105084807, "_timestamp": 1696951001.4980562, "_runtime": 0.9092512130737305, "_step": 111, "eval/reward": 0.7338533096043842, "_wandb": {"runtime": 0}}
