@@ -13,7 +13,7 @@ from tqdm import tqdm
 from models.impala_cnn_architecture import impala_cnn
 from rl_utils.stack_frames import stacked_frames_class
 from rl_utils.replay_buffer import memory
-
+from rl_utils.replay_buffer import memory_with_curriculum
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
@@ -45,7 +45,8 @@ def perform_optimization_step(model_policy, model_target, minibatch, gamma, opti
 def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min,  
                       optimizer=None, criterion=None, learning_rate=0.0001, tau=0.001, model=None, replay_buffer=None, 
                       num_levels=500, num_levels_eval=20, start_level=0, start_level_test=1024, background=False,
-                      initial_random_experiences=5000, memory_capacity=50000, resume=False, project_name="rl_research_mbzuai"):
+                      initial_random_experiences=5000, memory_capacity=50000, resume=False, project_name="rl_research_mbzuai",
+                      number_of_curriculums=3):
     # Used to normalize the reward
     rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
     min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
@@ -68,7 +69,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
 
     # Initialize replay buffer if it's empty
     if replay_buffer is None:
-        replay_buffer = memory(max_size=memory_capacity)
+        replay_buffer = memory_with_curriculum(max_size=memory_capacity, curriculums=number_of_curriculums)
         replay_buffer.populate_memory_random(env, name_env, k_initial_experiences=initial_random_experiences)
     if optimizer is None:
         optimizer = torch.optim.Adam(model_policy.parameters(), lr=learning_rate)
@@ -98,7 +99,8 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     "device": device,
     "num_levels": num_levels,
     "num_levels_eval": num_levels_eval,
-    "background": background,},
+    "background": background,
+    "number_of_curriculums": number_of_curriculums,},
     resume=resume,
     )
     run.define_metric("train/step")
@@ -338,7 +340,7 @@ def train_dqn(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_deca
 
 if __name__ == '__main__':
     env_name = "procgen:procgen-bossfight-v0"
-    learned_model, replay_buffer, run_name = train_dqn(env_name, episodes=5000, batch_size=64, gamma=0.99, 
+    learned_model, replay_buffer, run_name = train_dqn_curriculum(env_name, episodes=5000, batch_size=64, gamma=0.99, 
                                                         epsilon_start=0.99, epsilon_decay=150000, epsilon_min=0.05, learning_rate=0.001, 
                                                         num_levels=500, num_levels_eval=20, background=False, start_level=0, start_level_test=42,
                                                         resume=True)

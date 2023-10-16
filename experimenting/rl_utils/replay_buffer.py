@@ -17,13 +17,13 @@ class memory_with_curriculum():
         self.buffer_deque.append(experience)
     
     def sample(self, batch_size):
-        if self.counter == 0 or len(self.buffer_deque) == self.buffer_size:
+        if self.counter == 0 or self.counter >= self.buffer_size:
             self.make_curriculums()
             self.counter = 1
         self.counter += 1
-    
-        index = np.random.choice(np.arange(len(self.buffer_deque)), size = batch_size, replace = False)
-        return [self.buffer_deque[i] for i in index]
+        self.i = self.counter // (self.buffer_size // self.number_of_curriculums)
+        index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.i])), size = batch_size, replace = False)
+        return [self.buffer_deque_curriculum[i] for i in index]
 
     def populate_memory_model(self, model, environment, name_env, k_initial_experiences, device):
         rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
