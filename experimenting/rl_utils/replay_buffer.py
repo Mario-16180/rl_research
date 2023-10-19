@@ -21,12 +21,12 @@ class memory_with_curriculum():
             self.make_curriculums()
             self.counter = 1
         self.counter += 1
-        self.i = self.counter // (self.buffer_size // self.number_of_curriculums)
-        index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.i])), size = batch_size, replace = False)
-        return [self.buffer_deque_curriculum[i] for i in index]
+        self.curriculum = int(self.counter // (self.buffer_size / self.number_of_curriculums))
+        index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.curriculum])), size = batch_size, replace = False)
+        return [self.buffer_deque_curriculum[self.curriculum][k] for k in index]
 
     def populate_memory_model(self, model, environment, name_env, k_initial_experiences, device):
-        rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
+        rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
         min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
         max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
         normalize_reward = lambda r: (r - min_r) / (max_r - min_r)
@@ -107,7 +107,7 @@ class memory():
         return [self.buffer_deque[i] for i in index]
 
     def populate_memory_random(self, environment, name_env, k_initial_experiences):
-        rewardbounds_per_env=pd.read_csv('rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
+        rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
         min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
         max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
         normalize_reward = lambda r: (r - min_r) / (max_r - min_r)
