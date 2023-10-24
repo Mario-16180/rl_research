@@ -1,10 +1,10 @@
 import gym
 import torch
 import torch.nn as nn
+import pickle
 import wandb
 import pandas as pd
 import warnings
-import numpy as np
 import argparse
 from tqdm import tqdm
 from models.impala_cnn_architecture import impala_cnn
@@ -15,9 +15,8 @@ from experimenting.rl_utils.optimization import perform_optimization_step
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
-def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min,  
-                      optimizer=None, criterion=None, learning_rate=0.0001, tau=0.001, model=None, replay_buffer=None, 
-                      num_levels=500, num_levels_eval=20, start_level=0, start_level_test=1024, background=False,
+def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min=0.05, learning_rate=0.0001, tau=0.001, 
+                      num_levels=500, num_levels_eval=0, start_level=0, start_level_test=1024, background=False,
                       initial_random_experiences=5000, memory_capacity=50000, resume=False, project_name="rl_research_mbzuai",
                       number_of_curriculums=3, curriculum=False):
     # Used to normalize the reward
@@ -35,24 +34,19 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     print(f"Using device: {device}")
     
     # Initialize model and target model
-    if model is None:
-        model_policy = impala_cnn(env).to(device)
-        model_target = impala_cnn(env).to(device)
-        model_target.load_state_dict(model_policy.state_dict())
+    model_policy = impala_cnn(env).to(device)
+    model_target = impala_cnn(env).to(device)
+    model_target.load_state_dict(model_policy.state_dict())
 
     # Initialize replay buffer if it's empty
-    if replay_buffer is None:
-        if curriculum:
-            replay_buffer = memory_with_curriculum(max_size=memory_capacity, curriculums=number_of_curriculums)
-            replay_buffer.populate_memory_model(model_policy, env, name_env, k_initial_experiences=initial_random_experiences, device=device)
-        else:
-            replay_buffer = memory(max_size=memory_capacity)
-            replay_buffer.populate_memory_random(env, name_env, k_initial_experiences=initial_random_experiences)
-    if optimizer is None:
-        optimizer = torch.optim.Adam(model_policy.parameters(), lr=learning_rate)
-    if criterion is None:
-        criterion = nn.MSELoss()
-    current_episode = 0
+    if curriculum:
+        replay_buffer = memory_with_curriculum(max_size=memory_capacity, curriculums=number_of_curriculums)
+        replay_buffer.populate_memory_model(model_policy, env, name_env, k_initial_experiences=initial_random_experiences, device=device)
+    else:
+        replay_buffer = memory(max_size=memory_capacity)
+        replay_buffer.populate_memory_random(env, name_env, k_initial_experiences=initial_random_experiences)
+    optimizer = torch.optim.Adam(model_policy.parameters(), lr=learning_rate)
+    criterion = nn.MSELoss()
     ##### Login wandb + Hyperparameters and metadata
     # Start a new wandb run to track this script
     run = wandb.init(
@@ -83,20 +77,19 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     run.define_metric("train/step")
     run.define_metric("train/*", step_metric="train/step")
     run_name = run.name
+    current_episode = 0
+    current_step = 0
     if wandb.run.resumed:
         checkpoint = torch.load(wandb.restore('models/trained_models/checkpoint.tar'))
-        model_policy = impala_cnn(env).to(device)
         model_policy.load_state_dict(checkpoint['model_state_dict'])
-        model_target = impala_cnn(env).to(device)
         model_target.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         current_episode = checkpoint['episode']
+        current_step = checkpoint['step']
         loss = checkpoint['loss']
-        replay_buffer = checkpoint['buffer']
+        replay_buffer = pickle.load(open('models/trained_models/checkpoint_buffer', 'rb'))
     ##### End of wandb login
-
-    current_step = 0
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
+    #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
     for episode in tqdm(range(current_episode, episodes)):
         obs = env.reset()
         stacked_frames = stacked_frames_class()
@@ -153,7 +146,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                         if done:
                             break
                     run.log({f"train/reward_eval_{eval_episode}": reward_acc})
-                model_policy.save_model(episode=episode, optimizer=optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint.tar')
+                model_policy.save_model(episode=episode, train_step=current_step, optimizer=optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint')
 
             # Logging metrics to wandb
             squared_norm_gradients = 0
@@ -161,35 +154,90 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                 squared_norm_gradients += torch.norm(w.grad)**2
             log_dict = {
                 "train/step": current_step,
-                "train/training_reward_normalized": train_reward,
+                "train/training_reward": train_reward,
                 "train/training_episode": episode,
                 "train/loss": loss,
                 "train/squared_norm_gradients": squared_norm_gradients,
                 "train/action_taken": action,
                 "train/epsilon": eps,
                 "train/replay_buffer_#ofexperiences": len(replay_buffer.buffer_deque),
-                "train/learning_rate": scheduler.get_last_lr()[0],
+                #"train/learning_rate": scheduler.get_last_lr()[0],
             }
             if curriculum:
                 log_dict["train/curriculum"] = replay_buffer.curriculum
             run.log(log_dict)
-        scheduler.step()
+        #scheduler.step()
     run.save
     run.finish()
     return model_policy, replay_buffer.buffer_deque, run_name
 
 if __name__ == '__main__':
-
-    (name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min,  
-                      optimizer=None, criterion=None, learning_rate=0.0001, tau=0.001, model=None, replay_buffer=None, 
-                      num_levels=500, num_levels_eval=20, start_level=0, start_level_test=1024, background=False,
-                      initial_random_experiences=5000, memory_capacity=50000, resume=False, project_name="rl_research_mbzuai",
-                      number_of_curriculums=3, curriculum=False):
+    environment_names_dictionary = {
+        "coinrun": "procgen:procgen-coinrun-v0",
+        "starpilot": "procgen:procgen-starpilot-v0",
+        "caveflyer": "procgen:procgen-caveflyer-v0",
+        "dodgeball": "procgen:procgen-dodgeball-v0",
+        "fruitbot": "procgen:procgen-fruitbot-v0",
+        "chaser": "procgen:procgen-chaser-v0",
+        "miner": "procgen:procgen-miner-v0",
+        "jumper": "procgen:procgen-jumper-v0",
+        "leaper": "procgen:procgen-leaper-v0",
+        "maze": "procgen:procgen-maze-v0",
+        "bigfish": "procgen:procgen-bigfish-v0",
+        "heist": "procgen:procgen-heist-v0",
+        "climber": "procgen:procgen-climber-v0",
+        "plunder": "procgen:procgen-plunder-v0",
+        "ninja": "procgen:procgen-ninja-v0",
+        "bossfight": "procgen:procgen-bossfight-v0",
+    }
     parser = argparse.ArgumentParser(description='Arguments for training the DQN agent')
-    parser.add_argument('name_env', metavar='N', type=str, nargs='+',)
-    parser.add_argument('episodes', metavar='E', type=int, nargs='+',)
-    env_name = "procgen:procgen-bossfight-v0"
-    learned_model, replay_buffer, run_name = train_dqn_curriculum(env_name, episodes=5000, batch_size=64, gamma=0.99, 
-                                                        epsilon_start=0.99, epsilon_decay=150000, epsilon_min=0.05, learning_rate=0.001, 
-                                                        num_levels=500, num_levels_eval=20, background=False, start_level=0, start_level_test=42,
-                                                        resume=False)
+    parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='bossfight')
+    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=1500)
+    parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=64)
+    parser.add_argument('-g', '--gamma', metavar='G', type=float, help='discount factor', default=0.99)
+    parser.add_argument('-epss', '--epsilon_start', metavar='ES', type=float, help='initial value of epsilon', default=1.0)
+    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=30000)
+    parser.add_argument('-epsm', '--epsilon_min', metavar='EM', type=float, help='minimum value of epsilon', default=0.1)
+    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.0001)
+    parser.add_argument('-t', '--tau', metavar='T', type=float, help='parameter for updating the target network', default=0.001)
+    parser.add_argument('-nl', '--num_levels', metavar='NL', type=int, help='number of levels in the environment', default=500)
+    parser.add_argument('-nle', '--num_levels_eval', metavar='NLE', type=int, help='number of levels in the evaluation environment', default=20)
+    parser.add_argument('-sl', '--start_level', metavar='SL', type=int, help='starting level for training', default=0)
+    parser.add_argument('-slt', '--start_level_test', metavar='SLT', type=int, help='starting level for evaluation', default=1024)
+    parser.add_argument('-b', '--background', metavar='BG', type=bool, help='use background in the environment', default=True)
+    parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=5000)
+    parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=50000)
+    parser.add_argument('-r', '--resume', metavar='R', type=bool, help='resume training', default=False)
+    parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='rl_research_mbzuai')
+    parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=3)
+    parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=False)
+    args = parser.parse_args()
+
+    name_env = environment_names_dictionary[args.name_env]
+    episodes = args.episodes
+    batch_size = args.batch_size
+    gamma = args.gamma
+    epsilon_decay = args.epsilon_decay
+    epsilon_start = args.epsilon_start
+    epsilon_min = args.epsilon_min
+    learning_rate = args.learning_rate
+    tau = args.tau
+    num_levels = args.num_levels
+    num_levels_eval = args.num_levels_eval
+    start_level = args.start_level
+    start_level_test = args.start_level_test
+    background = args.background
+    initial_random_experiences = args.initial_random_experiences
+    memory_capacity = args.memory_capacity
+    resume = args.resume
+    project_name = args.project_name
+    number_of_curriculums = args.number_of_curriculums
+    curriculum = args.curriculum
+
+    learned_model, replay_buffer, run_name = train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min,
+                                                                  learning_rate=learning_rate, tau=tau, num_levels=num_levels, 
+                                                                num_levels_eval=num_levels_eval, start_level=start_level, 
+                                                                start_level_test=start_level_test, background=background, 
+                                                                initial_random_experiences=initial_random_experiences, 
+                                                                memory_capacity=memory_capacity, resume=resume, project_name=project_name,
+                                                                number_of_curriculums=number_of_curriculums, curriculum=curriculum)

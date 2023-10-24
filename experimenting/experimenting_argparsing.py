@@ -3,7 +3,8 @@ import argparse
 parser = argparse.ArgumentParser(description='Process some integers.') # Describes the program
 parser.add_argument('integers', metavar='N', type=int, nargs='+',
                     help='an integer for the accumulator') # Adds a positional argument
-parser.add_argument('-single_word_message', '--swm', metavar='M', type=str, nargs=1,)
+parser.add_argument('-single_word_message', '--swm', metavar='M', type=str, default='Hello World!')
+parser.add_argument('-training_steps', metavar='T', type=int, default=1000)
 parser.add_argument('--sum', dest='accumulate', action='store_const',
                     const=sum, default=max,
                     help='sum the integers (default: find the max)') # Explain each attribute: dest, action, const, default, help
@@ -17,7 +18,9 @@ parser.add_argument('--verbose', dest='verbose', action='store_true',
                                             # If the flag is present, args.verbose is True, otherwise it is False.
 parser.add_argument('--version', action='version', version='%(prog)s 1.0')
 args = parser.parse_args() # This line parses the arguments and stores them in args
-print(args.swm[0])
+print(args)
+print(args.swm)
+print(args.training_steps)
 print(args.integers)
 print(args.integers[0], type(args.integers[0]))
 print(args.accumulate(args.integers))

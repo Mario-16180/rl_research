@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import math
 import random
+import pickle
 
 class impala_cnn(nn.Module):
     """ This model was used in the paper "IMPALA: Scalable Distributed Deep-RL with
@@ -81,8 +82,10 @@ class impala_cnn(nn.Module):
     
     def save_model(self, episode, optimizer, loss, buffer, path):
         # Save the model
-        torch.save({"episode": episode, "model_state_dict": self.state_dict(), "buffer": buffer, "optimizer_state_dict": optimizer.state_dict(), 
-                    "loss": loss}, path)
+        torch.save({"episode": episode, "model_state_dict": self.state_dict(), "optimizer_state_dict": optimizer.state_dict(), 
+                    "loss": loss}, path + ".tar")
+        # Save the buffer
+        pickle.dump(buffer, open(path + "_buffer", "wb"))
 
     def select_action(self, env, state, epsilon_start, epsilon_decay, epsilon_min, current_step, device):
         sample_for_probability = random.random()

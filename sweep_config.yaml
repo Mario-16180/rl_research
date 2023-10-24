@@ -1,0 +1,21 @@
+name: rl_hyperparam_search
+project: rl_research_mbzuai
+program: experimenting/main.py
+method: bayes
+metric:
+  goal: maximize
+  name: train/training_reward
+parameters:
+  learning_rate:
+    min: 0.00005
+    max: 0.001
+  gamma:
+    min: 0.9
+    max: 0.99
+  tau:
+    min: 0.0005
+    max: 0.005
+  number_of_curriculums:
+    values: [3,4,5,6,7,8,9,10]
+  initial_random_experiences:
+    values: [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000] 
