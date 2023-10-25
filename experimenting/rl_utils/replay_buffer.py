@@ -11,17 +11,21 @@ class memory_with_curriculum():
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.number_of_curriculums = curriculums
+        self.flag_first_curriculum = True
         self.counter = 0
     
     def add(self, experience):
         self.buffer_deque.append(experience)
     
     def sample(self, batch_size):
-        if self.counter == 0 or self.counter >= self.buffer_size:
+        if self.flag_first_curriculum:
             self.make_curriculums()
-            self.counter = 1
+            self.flag_first_curriculum = False
+        elif self.counter >= self.buffer_size:
+            self.make_curriculums()
+            self.counter = 0
         self.counter += 1
-        self.curriculum = int(self.counter // (self.buffer_size / self.number_of_curriculums))
+        self.curriculum = int(self.counter // (self.buffer_size / self.number_of_curriculums)) % self.number_of_curriculums # The % is to make sure that the curriculum is always between 0 and number_of_curriculums
         index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.curriculum])), size = batch_size, replace = False)
         return [self.buffer_deque_curriculum[self.curriculum][k] for k in index]
 

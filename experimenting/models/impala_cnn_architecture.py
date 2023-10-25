@@ -80,9 +80,9 @@ class impala_cnn(nn.Module):
         x = self.flatten_to_mlp(x)
         return x
     
-    def save_model(self, episode, optimizer, loss, buffer, path):
+    def save_model(self, episode, train_step, optimizer, loss, buffer, path):
         # Save the model
-        torch.save({"episode": episode, "model_state_dict": self.state_dict(), "optimizer_state_dict": optimizer.state_dict(), 
+        torch.save({"episode": episode, "step": train_step, "model_state_dict": self.state_dict(), "optimizer_state_dict": optimizer.state_dict(), 
                     "loss": loss}, path + ".tar")
         # Save the buffer
         pickle.dump(buffer, open(path + "_buffer", "wb"))

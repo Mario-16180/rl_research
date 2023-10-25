@@ -8,17 +8,17 @@ import warnings
 import argparse
 from tqdm import tqdm
 from models.impala_cnn_architecture import impala_cnn
-from experimenting.rl_utils.stack_frames import stacked_frames_class
-from experimenting.rl_utils.replay_buffer import memory
-from experimenting.rl_utils.replay_buffer import memory_with_curriculum
-from experimenting.rl_utils.optimization import perform_optimization_step
+from rl_utils.stack_frames import stacked_frames_class
+from rl_utils.replay_buffer import memory
+from rl_utils.replay_buffer import memory_with_curriculum
+from rl_utils.optimization import perform_optimization_step
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
-def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min=0.05, learning_rate=0.0001, tau=0.001, 
-                      num_levels=500, num_levels_eval=0, start_level=0, start_level_test=1024, background=False,
-                      initial_random_experiences=5000, memory_capacity=50000, resume=False, project_name="rl_research_mbzuai",
-                      number_of_curriculums=3, curriculum=False):
+def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau, 
+                      num_levels, num_levels_eval, start_level, start_level_test, background,
+                      initial_random_experiences, memory_capacity, resume, project_name,
+                      number_of_curriculums, curriculum):
     # Used to normalize the reward
     rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
     min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
@@ -71,6 +71,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     "num_levels": num_levels,
     "num_levels_eval": num_levels_eval,
     "background": background,
+    "curriculum": curriculum,
     "number_of_curriculums": number_of_curriculums,},
     resume=resume,
     )
@@ -107,7 +108,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
             
             minibatch = replay_buffer.sample(batch_size)
 
-            loss = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size, curriculum=True)
+            loss = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size, curriculum=curriculum)
 
             if curriculum: 
                 # Calculate temporal difference
@@ -131,6 +132,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
             train_reward += reward
 
             if current_step % 250 == 0:
+                rewards = []
                 for eval_episode in range(20):
                     obs = env_eval.reset()
                     stacked_frames_test = stacked_frames_class()
@@ -146,6 +148,8 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                         if done:
                             break
                     run.log({f"train/reward_eval_{eval_episode}": reward_acc})
+                    rewards.append(reward_acc)
+                run.log({"train/mean_reward_eval": sum(rewards)/len(rewards)})
                 model_policy.save_model(episode=episode, train_step=current_step, optimizer=optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint')
 
             # Logging metrics to wandb
@@ -169,7 +173,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
         #scheduler.step()
     run.save
     run.finish()
-    return model_policy, replay_buffer.buffer_deque, run_name
+    torch.save(model_policy.state_dict(), 'experimenting/models/trained_models/' + run_name + '.pt')
 
 if __name__ == '__main__':
     environment_names_dictionary = {
@@ -210,7 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--resume', metavar='R', type=bool, help='resume training', default=False)
     parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='rl_research_mbzuai')
     parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=3)
-    parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=False)
+    parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=True)
     args = parser.parse_args()
 
     name_env = environment_names_dictionary[args.name_env]
@@ -234,10 +238,10 @@ if __name__ == '__main__':
     number_of_curriculums = args.number_of_curriculums
     curriculum = args.curriculum
 
-    learned_model, replay_buffer, run_name = train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min,
+    learned_model, replay_buffer, run_name = train_dqn_curriculum(name_env=name_env, episodes=episodes, batch_size=batch_size, gamma=gamma, epsilon_start=epsilon_start, 
+                                                                  epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
                                                                   learning_rate=learning_rate, tau=tau, num_levels=num_levels, 
-                                                                num_levels_eval=num_levels_eval, start_level=start_level, 
-                                                                start_level_test=start_level_test, background=background, 
-                                                                initial_random_experiences=initial_random_experiences, 
-                                                                memory_capacity=memory_capacity, resume=resume, project_name=project_name,
-                                                                number_of_curriculums=number_of_curriculums, curriculum=curriculum)
+                                                                  num_levels_eval=num_levels_eval, start_level=start_level, 
+                                                                  start_level_test=start_level_test, background=background, initial_random_experiences=initial_random_experiences, 
+                                                                  memory_capacity=memory_capacity, resume=resume, project_name=project_name,
+                                                                  number_of_curriculums=number_of_curriculums, curriculum=curriculum)

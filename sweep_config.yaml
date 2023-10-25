@@ -4,7 +4,7 @@ program: experimenting/main.py
 method: bayes
 metric:
   goal: maximize
-  name: train/training_reward
+  name: train/mean_reward_eval
 parameters:
   learning_rate:
     min: 0.00005
@@ -15,6 +15,9 @@ parameters:
   tau:
     min: 0.0005
     max: 0.005
+  epsilon_decay:
+    min: 50000
+    max: 125000
   number_of_curriculums:
     values: [3,4,5,6,7,8,9,10]
   initial_random_experiences:
