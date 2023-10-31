@@ -62,7 +62,9 @@ class memory_with_curriculum():
                     current_stacked_frames = torch.tensor([current_stacked_frames], device=device, dtype=torch.float32)
                     temporal_difference = ((reward + self.gamma * model.forward(next_stacked_frames).max(1)[0].item() - 
                                             model.forward(current_stacked_frames)[0,action])**2).item()
-
+                # Convert tensors to numpy arrays
+                next_stacked_frames = next_stacked_frames.cpu().numpy()
+                current_stacked_frames = current_stacked_frames.cpu().numpy()
                 # Add experience to replay memory
                 self.add((current_stacked_frames, action, reward, next_stacked_frames, done, temporal_difference))
                 
@@ -82,7 +84,9 @@ class memory_with_curriculum():
                     current_stacked_frames = torch.tensor([current_stacked_frames], device=device, dtype=torch.float32)
                     temporal_difference = ((reward + self.gamma * model.forward(next_stacked_frames).max(1)[0].item() - 
                                             model.forward(current_stacked_frames)[0,action])**2).item()
-
+                # Convert tensors to numpy arrays
+                next_stacked_frames = next_stacked_frames.cpu().numpy()
+                current_stacked_frames = current_stacked_frames.cpu().numpy()
                 # Add experience to replay memory
                 self.add((current_stacked_frames, action, reward, next_stacked_frames, done, temporal_difference))
     

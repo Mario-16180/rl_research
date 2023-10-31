@@ -124,6 +124,9 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                     current_state = torch.tensor([current_state], device=device, dtype=torch.float32)
                     temporal_difference = ((norm_reward + gamma * model_policy.forward(next_state).max(1)[0].item() - 
                                             model_policy.forward(current_state)[0,action])**2).item()
+                # Convert tensors to numpy arrays before adding them to the replay buffer
+                next_state = next_state.cpu().numpy()
+                current_state = current_state.cpu().numpy()
                 replay_buffer.add((current_state, action, norm_reward, next_state, done, temporal_difference))
             else:
                 replay_buffer.add((current_state, action, norm_reward, next_state, done))
