@@ -7,6 +7,7 @@ import pandas as pd
 import warnings
 import argparse
 from tqdm import tqdm
+from collections import deque
 from models.impala_cnn_architecture import impala_cnn
 from rl_utils.stack_frames import stacked_frames_class
 from rl_utils.replay_buffer import memory
@@ -18,19 +19,23 @@ warnings.filterwarnings('ignore', category=UserWarning)
 def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau, 
                       num_levels, num_levels_eval, start_level, start_level_test, background,
                       initial_random_experiences, memory_capacity, resume, project_name,
-                      number_of_curriculums, curriculum):
+                      number_of_curriculums, curriculum, difficulty, gpu):
     # Used to normalize the reward
     rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
-    min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
-    max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
+    if difficulty == 'easy':
+        min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmineasy.item()
+        max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxeasy.item()
+    elif difficulty == 'hard':
+        min_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rminhard.item()
+        max_r = rewardbounds_per_env[rewardbounds_per_env.Environment == name_env].Rmaxhard.item()
     normalize_reward = lambda r: (r - min_r) / (max_r - min_r)
 
     # Initialize environment for training and evaluation
-    env = gym.make(name_env, start_level=start_level, num_levels=num_levels, use_backgrounds=background)
-    env_eval = gym.make(name_env, start_level=start_level_test, num_levels=num_levels_eval, use_backgrounds=background)
+    env = gym.make(name_env, start_level=start_level, num_levels=num_levels, use_backgrounds=background, distribution_mode=difficulty)
+    env_eval = gym.make(name_env, start_level=start_level_test, num_levels=num_levels_eval, use_backgrounds=background, distribution_mode=difficulty)
 
     # Choose GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:"+gpu if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
     # Initialize model and target model
@@ -72,12 +77,13 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     "num_levels_eval": num_levels_eval,
     "background": background,
     "curriculum": curriculum,
-    "number_of_curriculums": number_of_curriculums,},
+    "number_of_curriculums": number_of_curriculums,
+    "difficulty": difficulty,},
     resume=resume,
     )
     run.define_metric("train/step")
     run.define_metric("train/*", step_metric="train/step")
-    run_name = run.name
+    run_name = run.name + name_env
     current_episode = 0
     current_step = 0
     if wandb.run.resumed:
@@ -91,6 +97,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
         replay_buffer = pickle.load(open('models/trained_models/checkpoint_buffer', 'rb'))
     ##### End of wandb login
     #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
+    mean_reward_eval_smoothed = deque(maxlen=50)
     for episode in tqdm(range(current_episode, episodes)):
         obs = env.reset()
         stacked_frames = stacked_frames_class()
@@ -149,16 +156,18 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                             break
                     run.log({f"train/reward_eval_{eval_episode}": reward_acc})
                     rewards.append(reward_acc)
-                run.log({"train/mean_reward_eval": sum(rewards)/len(rewards)})
+                mean_reward_eval = sum(rewards)/len(rewards)
+                mean_reward_eval_smoothed.append(mean_reward_eval)
+                run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed)})
                 model_policy.save_model(episode=episode, train_step=current_step, optimizer=optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint')
 
             # Logging metrics to wandb
             squared_norm_gradients = 0
             for w in model_policy.parameters():
-                squared_norm_gradients += torch.norm(w.grad)**2
+                squared_norm_gradients += (torch.norm(w.grad)**2).item()
             log_dict = {
                 "train/step": current_step,
-                "train/training_reward": train_reward,
+                "train/training_reward": reward,
                 "train/training_episode": episode,
                 "train/loss": loss,
                 "train/squared_norm_gradients": squared_norm_gradients,
@@ -170,6 +179,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
             if curriculum:
                 log_dict["train/curriculum"] = replay_buffer.curriculum
             run.log(log_dict)
+        run.log({"train/episode_reward": train_reward})
         #scheduler.step()
     run.save
     run.finish()
@@ -196,25 +206,27 @@ if __name__ == '__main__':
     }
     parser = argparse.ArgumentParser(description='Arguments for training the DQN agent')
     parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='bossfight')
-    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=1500)
+    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=5000)
     parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=64)
     parser.add_argument('-g', '--gamma', metavar='G', type=float, help='discount factor', default=0.99)
     parser.add_argument('-epss', '--epsilon_start', metavar='ES', type=float, help='initial value of epsilon', default=1.0)
-    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=30000)
+    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=100000)
     parser.add_argument('-epsm', '--epsilon_min', metavar='EM', type=float, help='minimum value of epsilon', default=0.1)
     parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.0001)
     parser.add_argument('-t', '--tau', metavar='T', type=float, help='parameter for updating the target network', default=0.001)
-    parser.add_argument('-nl', '--num_levels', metavar='NL', type=int, help='number of levels in the environment', default=500)
+    parser.add_argument('-nl', '--num_levels', metavar='NL', type=int, help='number of levels in the environment', default=200)
     parser.add_argument('-nle', '--num_levels_eval', metavar='NLE', type=int, help='number of levels in the evaluation environment', default=20)
     parser.add_argument('-sl', '--start_level', metavar='SL', type=int, help='starting level for training', default=0)
-    parser.add_argument('-slt', '--start_level_test', metavar='SLT', type=int, help='starting level for evaluation', default=1024)
+    parser.add_argument('-slt', '--start_level_test', metavar='SLT', type=int, help='starting level for evaluation', default=516)
     parser.add_argument('-b', '--background', metavar='BG', type=bool, help='use background in the environment', default=True)
     parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=5000)
     parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=50000)
     parser.add_argument('-r', '--resume', metavar='R', type=bool, help='resume training', default=False)
     parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='rl_research_mbzuai')
     parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=3)
-    parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=True)
+    parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=False)
+    parser.add_argument('-d', '--difficulty', metavar='D', type=str, help='difficulty of the environment', default='easy')
+    parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
     args = parser.parse_args()
 
     name_env = environment_names_dictionary[args.name_env]
@@ -237,11 +249,16 @@ if __name__ == '__main__':
     project_name = args.project_name
     number_of_curriculums = args.number_of_curriculums
     curriculum = args.curriculum
+    difficulty = args.difficulty
+    gpu = args.gpu
 
-    learned_model, replay_buffer, run_name = train_dqn_curriculum(name_env=name_env, episodes=episodes, batch_size=batch_size, gamma=gamma, epsilon_start=epsilon_start, 
-                                                                  epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
-                                                                  learning_rate=learning_rate, tau=tau, num_levels=num_levels, 
-                                                                  num_levels_eval=num_levels_eval, start_level=start_level, 
-                                                                  start_level_test=start_level_test, background=background, initial_random_experiences=initial_random_experiences, 
-                                                                  memory_capacity=memory_capacity, resume=resume, project_name=project_name,
-                                                                  number_of_curriculums=number_of_curriculums, curriculum=curriculum)
+    train_dqn_curriculum(name_env=name_env, episodes=episodes, batch_size=batch_size, gamma=gamma, epsilon_start=epsilon_start, 
+                        epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
+                        learning_rate=learning_rate, tau=tau, num_levels=num_levels, 
+                        num_levels_eval=num_levels_eval, start_level=start_level, 
+                        start_level_test=start_level_test, background=background, initial_random_experiences=initial_random_experiences, 
+                        memory_capacity=memory_capacity, resume=resume, project_name=project_name,
+                        number_of_curriculums=number_of_curriculums, curriculum=curriculum, difficulty=difficulty, gpu=gpu)
+
+    # According to wandb, I'm using a maximum of 8 gb of GPU memory per job run. For the last sweep, somebody was usisng the same GPU as I was, it saturated
+    # and therefore I got an error and the process was terminated.

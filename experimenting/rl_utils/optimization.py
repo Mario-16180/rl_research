@@ -28,4 +28,4 @@ def perform_optimization_step(model_policy, model_target, minibatch, gamma, opti
     torch.nn.utils.clip_grad_norm_(model_policy.parameters(), 100) 
     optimizer.step()
     
-    return loss
+    return loss.item()
