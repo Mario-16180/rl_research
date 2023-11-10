@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau, 
                       num_levels, num_levels_eval, start_level, start_level_test, background,
                       initial_random_experiences, memory_capacity, resume, project_name,
-                      number_of_curriculums, curriculum, difficulty, gpu):
+                      number_of_curriculums, curriculum, difficulty, gpu, anti_curriculum, curriculum_criterion):
     # Used to normalize the reward
     rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
     if difficulty == 'easy':
@@ -35,8 +35,12 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     env_eval = gym.make(name_env, start_level=start_level_test, num_levels=num_levels_eval, use_backgrounds=background, distribution_mode=difficulty)
 
     # Choose GPU if available
-    device = torch.device("cuda:"+gpu if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    if torch.cuda.device_count() > 1:
+        device = torch.device("cuda:"+gpu if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
     
     # Initialize model and target model
     model_policy = impala_cnn(env).to(device)
@@ -78,7 +82,9 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
     "background": background,
     "curriculum": curriculum,
     "number_of_curriculums": number_of_curriculums,
-    "difficulty": difficulty,},
+    "difficulty": difficulty,
+    "anti_curriculum": anti_curriculum,
+    "curriculum_criterion": curriculum_criterion,},
     resume=resume,
     )
     run.define_metric("train/step")
@@ -95,8 +101,8 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
         current_step = checkpoint['step']
         loss = checkpoint['loss']
         replay_buffer = pickle.load(open('models/trained_models/checkpoint_buffer', 'rb'))
+
     ##### End of wandb login
-    #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2000, gamma=0.5)
     mean_reward_eval_smoothed = deque(maxlen=50)
     for episode in tqdm(range(current_episode, episodes)):
         obs = env.reset()
@@ -116,6 +122,10 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
             minibatch = replay_buffer.sample(batch_size)
 
             loss = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size, curriculum=curriculum)
+
+            # Criterion number 2 corresponds changing curriculums when a stability in the loss curve is detected
+            if curriculum_criterion == 2:
+                replay_buffer.losses_deque.append(loss)
 
             if curriculum: 
                 # Calculate temporal difference
@@ -176,17 +186,18 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                 "train/squared_norm_gradients": squared_norm_gradients,
                 "train/action_taken": action,
                 "train/epsilon": eps,
-                "train/replay_buffer_#ofexperiences": len(replay_buffer.buffer_deque),
-                #"train/learning_rate": scheduler.get_last_lr()[0],
+                "train/replay_buffer_#ofexperiences": len(replay_buffer.buffer_deque)
             }
             if curriculum:
                 log_dict["train/curriculum"] = replay_buffer.curriculum
             run.log(log_dict)
         run.log({"train/episode_reward": train_reward})
-        #scheduler.step()
     run.save
     run.finish()
     torch.save(model_policy.state_dict(), 'experimenting/models/trained_models/' + run_name + '.pt')
+
+def train_soft_actor_critic(name_env, episodes):
+    pass
 
 if __name__ == '__main__':
     environment_names_dictionary = {
@@ -229,6 +240,8 @@ if __name__ == '__main__':
     parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=3)
     parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=False)
     parser.add_argument('-d', '--difficulty', metavar='D', type=str, help='difficulty of the environment', default='easy')
+    parser.add_argument('-ac', '--anti_curriculum', metavar='AC', type=bool, help='going from easy to hard = false, hard to easy = true', default=False)
+    parser.add_argument('-cc', '--curriculum_criterion', metavar='CC', type=int, help='1 = time-step related criterion to change curriculum, 2 = stability in the loss curve criterion', default=1)
     parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
     args = parser.parse_args()
 
@@ -253,6 +266,8 @@ if __name__ == '__main__':
     number_of_curriculums = args.number_of_curriculums
     curriculum = args.curriculum
     difficulty = args.difficulty
+    anti_curriculum = args.anti_curriculum
+    curriculum_criterion = args.curriculum_criterion
     gpu = args.gpu
 
     train_dqn_curriculum(name_env=name_env, episodes=episodes, batch_size=batch_size, gamma=gamma, epsilon_start=epsilon_start, 
@@ -261,7 +276,8 @@ if __name__ == '__main__':
                         num_levels_eval=num_levels_eval, start_level=start_level, 
                         start_level_test=start_level_test, background=background, initial_random_experiences=initial_random_experiences, 
                         memory_capacity=memory_capacity, resume=resume, project_name=project_name,
-                        number_of_curriculums=number_of_curriculums, curriculum=curriculum, difficulty=difficulty, gpu=gpu)
+                        number_of_curriculums=number_of_curriculums, curriculum=curriculum, difficulty=difficulty, anti_curriculum=anti_curriculum, 
+                        curriculum_criterion=curriculum_criterion, gpu=gpu)
 
     # According to wandb, I'm using a maximum of 8 gb of GPU memory per job run. For the last sweep, somebody was usisng the same GPU as I was, it saturated
-    # and therefore I got an error and the process was terminated.
+    # and therefore I got an error and the process was terminated. Managed to fix that resource optimization error.

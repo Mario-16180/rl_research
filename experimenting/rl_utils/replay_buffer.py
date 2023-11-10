@@ -5,29 +5,62 @@ import torch
 import pandas as pd
 
 class memory_with_curriculum():
-    def __init__(self, max_size, gamma=0.99, curriculums=3):
+    def __init__(self, max_size, max_train_steps_per_curriculum_criterion1, max_train_steps_per_curriculum_criterion2, stability_dequeue_size=2500, gamma=0.99, curriculums=3):
         self.buffer_size = max_size
         self.buffer_deque = deque(maxlen = max_size)
+        self.losses_deque = deque(maxlen = stability_dequeue_size) # For the stability criterion
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gamma = gamma
         self.number_of_curriculums = curriculums
         self.flag_first_curriculum = True
         self.counter = 0
+        self.max_train_per_curriculum_criterion1 = max_train_steps_per_curriculum_criterion1
+        self.max_train_per_curriculum_criterion2 = max_train_steps_per_curriculum_criterion2
     
     def add(self, experience):
         self.buffer_deque.append(experience)
     
-    def sample(self, batch_size):
-        if self.flag_first_curriculum:
-            self.make_curriculums()
-            self.flag_first_curriculum = False
-        elif self.counter >= self.buffer_size:
-            self.make_curriculums()
-            self.counter = 0
-        self.counter += 1
-        self.curriculum = int(self.counter // (self.buffer_size / self.number_of_curriculums)) % self.number_of_curriculums # The % is to make sure that the curriculum is always between 0 and number_of_curriculums
-        index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.curriculum])), size = batch_size, replace = False)
-        return [self.buffer_deque_curriculum[self.curriculum][k] for k in index]
+    def sample(self, batch_size, curriculum_criterion=1, anti_curriculum=False):
+        # Criteria for getting to the next curriculum and therefore affecting the sampling. Criterion number 1 corresponds to changing curriculums based on the
+        # amount of new experiences in the current curriculum. Criterion number 2 corresponds to stability of the loss function.
+        if curriculum_criterion == 1:
+            if self.flag_first_curriculum:
+                self.make_curriculums(anti_curriculum=anti_curriculum)
+                self.flag_first_curriculum = False
+                self.curriculum = 0
+            elif self.counter >= self.max_train_per_curriculum_criterion1:
+                self.curriculum += 1
+                self.counter = 0
+            if self.curriculum >= self.number_of_curriculums:
+                self.make_curriculums(anti_curriculum=anti_curriculum)
+                self.curriculum = 0
+            self.counter += 1
+            index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.curriculum])), size = batch_size, replace = False)
+            return [self.buffer_deque_curriculum[self.curriculum][k] for k in index]
+        elif curriculum_criterion == 2:
+            if self.flag_first_curriculum:
+                self.make_curriculums(anti_curriculum=anti_curriculum)
+                self.flag_first_curriculum = False
+                self.curriculum = 0
+            elif len(self.losses_deque) == self.losses_deque.maxlen:
+                """
+                To know if the curve has already hit a plateau, I'm gonna take the proportion between the average of the first 50 elements and the average of the last 50 elements.
+                If it's less than 1.5 (which corresponds to 150 % of proportion), then it's a plateau and we can continue to the next curriculum.
+                """
+                first_50 = np.mean(list(self.losses_deque)[:50])
+                last_50 = np.mean(list(self.losses_deque)[-50:])
+                if (last_50 / first_50 < 1.5) or self.counter >= self.max_train_per_curriculum_criterion2:
+                    self.losses_deque.clear()
+                    self.curriculum += 1
+                    self.counter = 0
+            # Make another set of curricula if the last curriculum has already been trained on.
+            if self.curriculum >= self.number_of_curriculums:
+                self.make_curriculums(anti_curriculum=anti_curriculum)
+                self.curriculum = 0
+                self.counter = 0
+            self.counter += 1
+            index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.curriculum])), size = batch_size, replace = False)
+            return [self.buffer_deque_curriculum[self.curriculum][k] for k in index]
 
     def populate_memory_model(self, model, environment, name_env, k_initial_experiences, device):
         rewardbounds_per_env=pd.read_csv('experimenting/rl_utils/reward_data_per_environment.csv', delimiter=' ', header=0)
@@ -90,17 +123,29 @@ class memory_with_curriculum():
                 # Add experience to replay memory
                 self.add((current_stacked_frames, action, reward, next_stacked_frames, done, temporal_difference))
     
-    def make_curriculums(self):
-        # Make curriculums based on temporal error
-        td_list = [self.buffer_deque[i][-1] for i in range(len(self.buffer_deque))]
-        td_list = np.array(td_list)
-        # Get the indices to make self.number_of_curriculums curriculums
-        curriculum_indices = np.array_split(np.argsort(td_list), self.number_of_curriculums)
-        # Create sub dequeues for each curriculum
-        self.buffer_deque_curriculum = [deque(maxlen = self.buffer_size // self.number_of_curriculums) for _ in range(self.number_of_curriculums)]
-        for i, indices in enumerate(curriculum_indices):
-            for index in indices:
-                self.buffer_deque_curriculum[i].append(self.buffer_deque[index])
+    def make_curriculums(self, anti_curriculum=False):
+        if anti_curriculum:
+            # Make curriculums based on temporal error
+            td_list = [self.buffer_deque[i][-1] for i in range(len(self.buffer_deque))]
+            td_list = np.array(td_list)
+            # Get the indices to make self.number_of_curriculums curriculums
+            curriculum_indices = np.array_split(np.argsort(td_list)[::-1], self.number_of_curriculums)
+            # Create sub dequeues for each curriculum
+            self.buffer_deque_curriculum = [deque(maxlen = self.buffer_size // self.number_of_curriculums) for _ in range(self.number_of_curriculums)]
+            for i, indices in enumerate(curriculum_indices):
+                for index in indices:
+                    self.buffer_deque_curriculum[i].append(self.buffer_deque[index])
+        else:
+            # Make curriculums based on temporal error
+            td_list = [self.buffer_deque[i][-1] for i in range(len(self.buffer_deque))]
+            td_list = np.array(td_list)
+            # Get the indices to make self.number_of_curriculums curriculums
+            curriculum_indices = np.array_split(np.argsort(td_list), self.number_of_curriculums)
+            # Create sub dequeues for each curriculum
+            self.buffer_deque_curriculum = [deque(maxlen = self.buffer_size // self.number_of_curriculums) for _ in range(self.number_of_curriculums)]
+            for i, indices in enumerate(curriculum_indices):
+                for index in indices:
+                    self.buffer_deque_curriculum[i].append(self.buffer_deque[index])
 
 class memory():
     def __init__(self, max_size):
