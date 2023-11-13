@@ -7,7 +7,8 @@ import pickle
 class impala_cnn(nn.Module):
     """ This model was used in the paper "IMPALA: Scalable Distributed Deep-RL with
     Importance Weighted Actor-Learner Architectures" https://arxiv.org/abs/1802.01561 
-    I only omit the LSTM part of the architecture, as I don't need it for this research."""
+    I only omit the LSTM part of the architecture, as I don't need it for this 
+    research, and instead I use stacked frames."""
     def __init__(self, env, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.action_space = env.action_space.n

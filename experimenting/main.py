@@ -101,7 +101,6 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
         current_step = checkpoint['step']
         loss = checkpoint['loss']
         replay_buffer = pickle.load(open('models/trained_models/checkpoint_buffer', 'rb'))
-
     ##### End of wandb login
     mean_reward_eval_smoothed = deque(maxlen=50)
     for episode in tqdm(range(current_episode, episodes)):
@@ -279,5 +278,5 @@ if __name__ == '__main__':
                         number_of_curriculums=number_of_curriculums, curriculum=curriculum, difficulty=difficulty, anti_curriculum=anti_curriculum, 
                         curriculum_criterion=curriculum_criterion, gpu=gpu)
 
-    # According to wandb, I'm using a maximum of 8 gb of GPU memory per job run. For the last sweep, somebody was usisng the same GPU as I was, it saturated
+    # According to wandb, I was using a maximum of 8 gb of GPU memory per job run. For the last sweep, somebody was usisng the same GPU as I was, it saturated
     # and therefore I got an error and the process was terminated. Managed to fix that resource optimization error.
