@@ -4,10 +4,11 @@ import math
 import random
 import pickle
 
-class lunar_lander_cnn(nn.Module):
-    def __init__(self, env, n_neurons_first_layer, n_neurons_second_layer, *args, **kwargs) -> None:
+class nature_architecture(nn.Module):
+    def __init__(self, env, *args, **kwargs) -> None:
         """
-        Build a fully connected neural network
+        Build a fully connected neural network based on the Nature CNN architecture, which can be found at:
+        https://storage.googleapis.com/deepmind-media/dqn/DQNNaturePaper.pdf
         
         Parameters
         ----------
@@ -17,10 +18,9 @@ class lunar_lander_cnn(nn.Module):
         super().__init__(*args, **kwargs)
         self.action_size = env.action_space.n
         self.observation_size = env.observation_space.shape[0]
-        self.build_network(n_neurons_first_layer, n_neurons_second_layer)
+        self.build_network()
 
-    def build_network(self, n_neurons_first_layer, n_neurons_second_layer):
-        # Nature CNN architecture
+    def build_network(self):
         self.conv_pool = nn.Sequential(
             nn.Conv2d(in_channels=4, out_channels=32, kernel_size=8, stride=4),
             nn.ReLU(),
@@ -31,11 +31,9 @@ class lunar_lander_cnn(nn.Module):
             )
         self.flatten_to_mlp = nn.Sequential(
             nn.Flatten(start_dim=1),
-            nn.Linear(3136, n_neurons_first_layer),
+            nn.Linear(3136, 512), # 3136 = 64 * 7 * 7
             nn.ReLU(),
-            nn.Linear(n_neurons_first_layer, n_neurons_second_layer),
-            nn.ReLU(),
-            nn.Linear(n_neurons_second_layer, self.action_size)
+            nn.Linear(512, self.action_size)
         )
 
     

@@ -6,6 +6,8 @@ import wandb
 import pandas as pd
 import warnings
 import argparse
+import numpy as np
+import random
 from tqdm import tqdm
 from collections import deque
 from models.impala_cnn_architecture import impala_cnn
@@ -147,10 +149,10 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                 target_weights[name] = tau * policy_weights[name] + (1 - tau) * target_weights[name]
 
             # Counters
-            current_step += 1
+            current_step += 1 # Training step
             train_reward += reward
 
-            if current_step % 250 == 0:
+            if current_step % 500 == 0:
                 rewards = []
                 for eval_episode in range(20):
                     obs = env_eval.reset()
@@ -191,12 +193,17 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                 log_dict["train/curriculum"] = replay_buffer.curriculum
             run.log(log_dict)
         run.log({"train/episode_reward": train_reward})
+        if current_step >= 2000000: # Assuming that 5000 episodes equal to 200,000 steps, 50000 episodes should be roughly 2,000,000 steps
+            break
     run.save
     run.finish()
     torch.save(model_policy.state_dict(), 'experimenting/models/trained_models/' + run_name + '.pt')
 
-def train_soft_actor_critic(name_env, episodes):
-    pass
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 if __name__ == '__main__':
     environment_names_dictionary = {
@@ -219,21 +226,21 @@ if __name__ == '__main__':
     }
     parser = argparse.ArgumentParser(description='Arguments for training the DQN agent')
     parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='bossfight')
-    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=5000)
-    parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=64)
+    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=50000)
+    parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=32)
     parser.add_argument('-g', '--gamma', metavar='G', type=float, help='discount factor', default=0.99)
     parser.add_argument('-epss', '--epsilon_start', metavar='ES', type=float, help='initial value of epsilon', default=1.0)
-    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=100000)
-    parser.add_argument('-epsm', '--epsilon_min', metavar='EM', type=float, help='minimum value of epsilon', default=0.1)
-    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.0001)
+    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=1000000)
+    parser.add_argument('-epsm', '--epsilon_min', metavar='EM', type=float, help='minimum value of epsilon', default=0.05)
+    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.0005)
     parser.add_argument('-t', '--tau', metavar='T', type=float, help='parameter for updating the target network', default=0.001)
     parser.add_argument('-nl', '--num_levels', metavar='NL', type=int, help='number of levels in the environment', default=200)
     parser.add_argument('-nle', '--num_levels_eval', metavar='NLE', type=int, help='number of levels in the evaluation environment', default=20)
     parser.add_argument('-sl', '--start_level', metavar='SL', type=int, help='starting level for training', default=0)
     parser.add_argument('-slt', '--start_level_test', metavar='SLT', type=int, help='starting level for evaluation', default=516)
     parser.add_argument('-b', '--background', metavar='BG', type=bool, help='use background in the environment', default=True)
-    parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=5000)
-    parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=50000)
+    parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=50000)
+    parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=150000)
     parser.add_argument('-r', '--resume', metavar='R', type=bool, help='resume training', default=False)
     parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='rl_research_mbzuai')
     parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=3)
@@ -268,6 +275,8 @@ if __name__ == '__main__':
     anti_curriculum = args.anti_curriculum
     curriculum_criterion = args.curriculum_criterion
     gpu = args.gpu
+
+    set_seed(42)
 
     train_dqn_curriculum(name_env=name_env, episodes=episodes, batch_size=batch_size, gamma=gamma, epsilon_start=epsilon_start, 
                         epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,

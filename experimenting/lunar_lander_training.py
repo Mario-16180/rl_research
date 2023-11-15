@@ -18,4 +18,4 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 # This script is used to do a fast training in the LunarLander-v2 environment
 if __name__ == '__main__':
-    
+    pass
