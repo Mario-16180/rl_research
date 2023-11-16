@@ -147,7 +147,8 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
             target_weights = model_target.state_dict()
             for name in policy_weights:
                 target_weights[name] = tau * policy_weights[name] + (1 - tau) * target_weights[name]
-
+            model_target.load_state_dict(target_weights)
+            
             # Counters
             current_step += 1 # Training step
             train_reward += reward
@@ -158,15 +159,15 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                     obs = env_eval.reset()
                     stacked_frames_test = stacked_frames_class()
                     stacked_frames_test.initialize_stack(obs)
-                    done = False
+                    done_eval = False
                     reward_acc = 0
-                    while not done:
+                    while not done_eval:
                         action_eval, _ = model_policy.select_action(env_eval, stacked_frames_test.stacked_frames_array, 0.05, 1, 0.05, current_step, device)
                         action_eval = action_eval.item()
-                        next_obs, reward, done, _ = env_eval.step(action_eval)
+                        next_obs, reward, done_eval, _ = env_eval.step(action_eval)
                         stacked_frames_test.append_frame_to_stack(next_obs)
                         reward_acc += reward
-                        if done:
+                        if done_eval:
                             break
                     run.log({f"train/reward_eval_{eval_episode}": reward_acc})
                     rewards.append(reward_acc)

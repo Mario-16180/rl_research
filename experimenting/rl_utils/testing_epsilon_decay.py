@@ -2,8 +2,8 @@ import math
 from matplotlib import pyplot as plt
 
 eps_start = 1.0
-eps_end = 0.01
-time_steps = 2000000
+eps_end = 0.05
+time_steps = 1500
 
 for proportional_factor in [1/2, 1/3, 1/4, 1/5]: # The lower the proportional factor, the higher the decay
 

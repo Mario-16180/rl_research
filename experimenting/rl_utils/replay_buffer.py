@@ -200,3 +200,26 @@ class memory():
 
                 # Add experience to replay memory
                 self.add((current_stacked_frames, action, reward, next_stacked_frames, done))
+
+class memory_lunar_lander():
+    def __init__(self, max_size):
+        self.buffer_size = max_size
+        self.buffer_deque = deque(maxlen = max_size)
+    
+    def add(self, experience):
+        self.buffer_deque.append(experience)
+    
+    def sample(self, batch_size):
+        index = np.random.choice(np.arange(len(self.buffer_deque)), size = batch_size, replace = False)
+        return [self.buffer_deque[i] for i in index]
+
+    def populate_memory_random(self, environment, k_initial_experiences):
+        done = True
+        for i in range(k_initial_experiences):
+            if done:
+                current_state = environment.reset()[0]
+            # Getting a random action from action space
+            action = environment.action_space.sample()
+            next_state, reward, done, _, info = environment.step(action)
+            self.add((current_state, action, reward, next_state, done))
+            current_state = next_state

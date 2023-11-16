@@ -4,7 +4,7 @@ import math
 import random
 import pickle
 
-class lunar_lander_cnn(nn.Module):
+class lunar_lander_mlp(nn.Module):
     def __init__(self, env, n_neurons_first_layer, n_neurons_second_layer, *args, **kwargs) -> None:
         """
         Build a fully connected neural network
@@ -29,6 +29,7 @@ class lunar_lander_cnn(nn.Module):
         )
     
     def forward(self, x):
+        x = torch.Tensor(x)
         return self.mlp(x)
     
     def save_model(self, episode, train_step, optimizer, loss, buffer, path):
@@ -45,7 +46,8 @@ class lunar_lander_cnn(nn.Module):
             with torch.no_grad():
                 state = torch.tensor([state], device=device, dtype=torch.float32)
                 action = self.forward(state).max(1)[1].view(1, 1)
+                action = action.item()
                 return action, eps_threshold
         else:
-            action = torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+            action = env.action_space.sample()
             return action, eps_threshold

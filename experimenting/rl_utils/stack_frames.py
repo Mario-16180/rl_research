@@ -21,15 +21,3 @@ class stacked_frames_class():
         frame = np.dot(frame[...,:3], [0.2989, 0.5870, 0.1140])
         frame = frame.astype(np.uint8)
         return frame
-
-"""
-if __name__ == '__main__':
-    env_name = "procgen:procgen-bossfight-v0"
-    env = gym.make(env_name, num_levels=1, start_level=0)
-    obs = env.reset()
-    stacked_frames = stacked_frames_class()
-    stacked_frames.initialize_stack(obs)
-    print(stacked_frames.stacked_frames_array, stacked_frames.stacked_frames_array.shape)
-    stacked_frames.append_frame_to_stack(obs)
-    print(stacked_frames.stacked_frames_array, stacked_frames.stacked_frames_array.shape)
-"""
