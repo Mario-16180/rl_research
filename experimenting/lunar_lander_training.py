@@ -12,14 +12,15 @@ from tqdm import tqdm
 from collections import deque
 from models.lunar_lander_dqn_architecture import lunar_lander_mlp
 from rl_utils.replay_buffer import memory_lunar_lander as memory
-from rl_utils.replay_buffer import memory_with_curriculum
+from rl_utils.replay_buffer import memory_lunar_lander_curriculum as memory_with_curriculum
 from rl_utils.optimization import perform_optimization_step
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
-def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
-                      initial_random_experiences, memory_capacity, resume, project_name,
-                      number_of_curriculums, curriculum, gpu, anti_curriculum, curriculum_criterion):
+def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_value, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
+                        first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, resume, project_name, max_train_steps_per_curriculum_criterion1, 
+                        max_train_steps_per_curriculum_criterion2,
+                        stability_dequeue_size, number_of_curriculums, curriculum, gpu, anti_curriculum, curriculum_criterion, percentile):
     # Initialize the environment
     env = gym.make(name_env)
     env_eval = gym.make(name_env)
@@ -33,14 +34,16 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
         print(f"Using device: {device}")
 
     # Initialize model and target model
-    model_policy = lunar_lander_mlp(env, 64, 64).to(device)
-    model_target = lunar_lander_mlp(env, 64, 64).to(device)
+    model_policy = lunar_lander_mlp(env, first_layer_neurons, second_layer_neurons).to(device)
+    model_target = lunar_lander_mlp(env, first_layer_neurons, second_layer_neurons).to(device)
     model_target.load_state_dict(model_policy.state_dict())
 
     # Initialize replay buffer if it's empty
     if curriculum:
-        replay_buffer = memory_with_curriculum(max_size=memory_capacity, curriculums=number_of_curriculums)
-        replay_buffer.populate_memory_model(model_policy, env, name_env, k_initial_experiences=initial_random_experiences, device=device)
+        replay_buffer = memory_with_curriculum(max_size=memory_capacity, curriculums=number_of_curriculums, max_train_steps_per_curriculum_criterion1=max_train_steps_per_curriculum_criterion1, 
+                                               max_train_steps_per_curriculum_criterion2=max_train_steps_per_curriculum_criterion2, stability_dequeue_size=stability_dequeue_size,
+                                               gamma=gamma, percentile=percentile, anti_curriculum=anti_curriculum)
+        replay_buffer.populate_memory_random(model_policy, env, k_initial_experiences=initial_random_experiences, device=device)
     else:
         replay_buffer = memory(max_size=memory_capacity)
         replay_buffer.populate_memory_random(env, k_initial_experiences=initial_random_experiences)
@@ -92,7 +95,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
     ##### End of wandb login
 
     mean_reward_eval_smoothed = deque(maxlen=50)
-
+    mean_reward_eval = float('-inf')
     # Training loop
     for episode in tqdm(range(current_episode, episodes)):
         current_state = env.reset()[0]
@@ -104,7 +107,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
             
             minibatch = replay_buffer.sample(batch_size)
 
-            loss = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size, curriculum=curriculum)
+            loss = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size, grad_clip_value=grad_clip_value, curriculum=curriculum)
 
             # Criterion number 2 corresponds changing curriculums when a stability in the loss curve is detected
             if curriculum_criterion == 2:
@@ -114,7 +117,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
                 # Calculate temporal difference
                 with torch.no_grad():
                     next_state = torch.tensor([next_state], device=device, dtype=torch.float32)
-                    current_state = torch.tensor([current_state], device=device, dtype=torch.float32)
+                    current_state = torch.tensor([current_state], device=device, dtype=torch.float32).reshape(1,8)
                     temporal_difference = ((reward + gamma * model_policy.forward(next_state).max(1)[0].item() - 
                                             model_policy.forward(current_state)[0,action])**2).item()
                 # Convert tensors to numpy arrays before adding them to the replay buffer
@@ -134,8 +137,11 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
             # Counters
             current_step += 1 # Training step
             train_reward += reward
-    
-            if current_step % 500 == 0:
+
+            # Update current state
+            current_state = next_state.copy()
+
+            if current_step % 250 == 0:
                 env_eval.reset(seed=42)
                 rewards = []
                 for eval_episode in range(20):
@@ -149,11 +155,11 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
                         reward_acc += reward
                         if done_eval:
                             break
-                    run.log({f"train/reward_eval_{eval_episode}": reward_acc})
                     rewards.append(reward_acc)
                 mean_reward_eval = sum(rewards)/len(rewards)
                 mean_reward_eval_smoothed.append(mean_reward_eval)
-                run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed)})
+                run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed), 
+                         "train/reward_eval": [reward for reward in rewards]})
                 model_policy.save_model(episode=episode, train_step=current_step, optimizer=optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint_lunar_lander')
 
             # Logging metrics to wandb
@@ -176,7 +182,9 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, gamma, eps
 
             if done:
                 break
-
+            
+        if mean_reward_eval >= 200:
+            break
         run.log({"train/episode_reward": train_reward})
     run.save
     run.finish()
@@ -192,20 +200,27 @@ def set_seed(seed):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Arguments for training the DQN agent')
     parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='LunarLander-v2')
-    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=1500)
+    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=2000)
     parser.add_argument('-ms', '--max_steps', metavar='MS', type=int, help='maximum number of steps per episode', default=1000)
     parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=64)
+    parser.add_argument('-gc', '--grad_clip_value', metavar='GC', type=float, help='value to clip the gradients', default=10)
     parser.add_argument('-g', '--gamma', metavar='G', type=float, help='discount factor', default=0.99)
     parser.add_argument('-epss', '--epsilon_start', metavar='ES', type=float, help='initial value of epsilon', default=1.0)
-    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=750)
     parser.add_argument('-epsm', '--epsilon_min', metavar='EM', type=float, help='minimum value of epsilon', default=0.05)
-    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.001)
+    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=750)
+    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=1e-4)
     parser.add_argument('-t', '--tau', metavar='T', type=float, help='parameter for updating the target network', default=0.001)
+    parser.add_argument('-fln', '--first_layer_neurons', metavar='FLN', type=int, help='number of neurons in the first layer', default=64)
+    parser.add_argument('-sln', '--second_layer_neurons', metavar='SLN', type=int, help='number of neurons in the second layer', default=64)
     parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=50000)
     parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=100000)
+    parser.add_argument('-mcs1', '--max_train_steps_per_curriculum_criterion1', metavar='MCS1', type=int, help='maximum number of training steps per curriculum criterion 1', default=1000)
+    parser.add_argument('-mcs2', '--max_train_steps_per_curriculum_criterion2', metavar='MCS2', type=int, help='maximum number of training steps per curriculum criterion 2', default=1000)
+    parser.add_argument('-sds', '--stability_dequeue_size', metavar='SDS', type=int, help='size of the stability deque', default=1000)
+    parser.add_argument('-p', '--percentile', metavar='P', type=int, help='percentile to use in the curriculum learning', default=0)
     parser.add_argument('-r', '--resume', metavar='R', type=bool, help='resume training', default=False)
     parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='rl_research_mbzuai')
-    parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=3)
+    parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=5)
     parser.add_argument('-c', '--curriculum', metavar='C', type=bool, help='use curriculum learning', default=False)
     parser.add_argument('-ac', '--anti_curriculum', metavar='AC', type=bool, help='going from easy to hard = false, hard to easy = true', default=False)
     parser.add_argument('-cc', '--curriculum_criterion', metavar='CC', type=int, help='1 = time-step related criterion to change curriculum, 2 = stability in the loss curve criterion', default=1)
@@ -216,14 +231,21 @@ if __name__ == '__main__':
     episodes = args.episodes
     max_steps = args.max_steps
     batch_size = args.batch_size
+    grad_clip_value = args.grad_clip_value
     gamma = args.gamma
     epsilon_decay = args.epsilon_decay
     epsilon_start = args.epsilon_start
     epsilon_min = args.epsilon_min
     learning_rate = args.learning_rate
     tau = args.tau
+    first_layer_neurons = args.first_layer_neurons
+    second_layer_neurons = args.second_layer_neurons
     initial_random_experiences = args.initial_random_experiences
     memory_capacity = args.memory_capacity
+    max_train_steps_per_curriculum_criterion1 = args.max_train_steps_per_curriculum_criterion1
+    max_train_steps_per_curriculum_criterion2 = args.max_train_steps_per_curriculum_criterion2
+    stability_dequeue_size = args.stability_dequeue_size
+    percentile = args.percentile
     resume = args.resume
     project_name = args.project_name
     number_of_curriculums = args.number_of_curriculums
@@ -234,9 +256,12 @@ if __name__ == '__main__':
 
     set_seed(42)
 
-    train_dqn_lunar_lander(name_env=name_env, episodes=episodes, max_steps=max_steps, batch_size=batch_size, gamma=gamma, epsilon_start=epsilon_start, 
-                        epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
-                        learning_rate=learning_rate, tau=tau, initial_random_experiences=initial_random_experiences, 
-                        memory_capacity=memory_capacity, resume=resume, project_name=project_name,
-                        number_of_curriculums=number_of_curriculums, curriculum=curriculum, anti_curriculum=anti_curriculum, 
-                        curriculum_criterion=curriculum_criterion, gpu=gpu)
+    train_dqn_lunar_lander(name_env=name_env, episodes=episodes, max_steps=max_steps, batch_size=batch_size, grad_clip_value=grad_clip_value,
+                           gamma=gamma, epsilon_start=epsilon_start, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
+                            learning_rate=learning_rate, tau=tau, first_layer_neurons=first_layer_neurons, second_layer_neurons=second_layer_neurons, 
+                            initial_random_experiences=initial_random_experiences, 
+                            memory_capacity=memory_capacity, max_train_steps_per_curriculum_criterion1=max_train_steps_per_curriculum_criterion1,
+                            max_train_steps_per_curriculum_criterion2=max_train_steps_per_curriculum_criterion2, stability_dequeue_size=stability_dequeue_size,
+                            percentile=percentile, resume=resume, project_name=project_name,
+                            number_of_curriculums=number_of_curriculums, curriculum=curriculum, anti_curriculum=anti_curriculum, 
+                            curriculum_criterion=curriculum_criterion, gpu=gpu)

@@ -127,7 +127,8 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
             # Criterion number 2 corresponds changing curriculums when a stability in the loss curve is detected
             if curriculum_criterion == 2:
                 replay_buffer.losses_deque.append(loss)
-
+                # Work in progress
+                pass
             if curriculum: 
                 # Calculate temporal difference
                 with torch.no_grad():
@@ -141,7 +142,7 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                 replay_buffer.add((current_state, action, norm_reward, next_state, done, temporal_difference))
             else:
                 replay_buffer.add((current_state, action, norm_reward, next_state, done))
-            
+
             # Update target network
             policy_weights = model_policy.state_dict()
             target_weights = model_target.state_dict()
@@ -169,8 +170,8 @@ def train_dqn_curriculum(name_env, episodes, batch_size, gamma, epsilon_start, e
                         reward_acc += reward
                         if done_eval:
                             break
-                    run.log({f"train/reward_eval_{eval_episode}": reward_acc})
-                    rewards.append(reward_acc)
+                run.log({f"train/reward_eval": [reward for reward in rewards]})
+                rewards.append(reward_acc)
                 mean_reward_eval = sum(rewards)/len(rewards)
                 mean_reward_eval_smoothed.append(mean_reward_eval)
                 run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed)})

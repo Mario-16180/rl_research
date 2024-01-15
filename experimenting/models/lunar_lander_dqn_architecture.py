@@ -44,8 +44,9 @@ class lunar_lander_mlp(nn.Module):
         eps_threshold = epsilon_min + (epsilon_start - epsilon_min) * math.exp(-1. * current_step / epsilon_decay)
         if sample_for_probability > eps_threshold:
             with torch.no_grad():
-                state = torch.tensor([state], device=device, dtype=torch.float32)
+                state = torch.tensor([state], device=device, dtype=torch.float32).reshape(1,8)
                 action = self.forward(state).max(1)[1].view(1, 1)
+                # action = self.forward(state).max(1)[1].view(1, 1)
                 action = action.item()
                 return action, eps_threshold
         else:
