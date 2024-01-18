@@ -32,6 +32,7 @@ class lunar_lander_mlp(nn.Module):
         x = torch.Tensor(x)
         return self.mlp(x)
     
+    # Function to create a checkpoint of the model
     def save_model(self, episode, train_step, optimizer, loss, buffer, path):
         # Save the model
         torch.save({"episode": episode, "step": train_step, "model_state_dict": self.state_dict(), "optimizer_state_dict": optimizer.state_dict(), 

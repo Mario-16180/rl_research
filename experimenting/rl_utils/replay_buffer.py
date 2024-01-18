@@ -245,7 +245,7 @@ class memory_lunar_lander_curriculum():
     
     def sample(self, batch_size, curriculum_criterion=1, anti_curriculum=False):
         # Criteria for getting to the next curriculum and therefore affecting the sampling. Criterion number 1 corresponds to changing curriculums based on the
-        # amount of new experiences in the current curriculum. Criterion number 2 corresponds to stability of the loss function.
+        # amount of new experiences made with the current curriculum. Criterion number 2 corresponds to stability of the loss function.
         if curriculum_criterion == 1:
             if self.flag_first_curriculum:
                 self.make_curriculums()
@@ -260,6 +260,7 @@ class memory_lunar_lander_curriculum():
             self.counter += 1
             index = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.curriculum])), size = batch_size, replace = False)
             return [self.buffer_deque_curriculum[self.curriculum][k] for k in index]
+        # Currently, criterion 2 is not being used
         elif curriculum_criterion == 2:
             if self.flag_first_curriculum:
                 self.make_curriculums() 
