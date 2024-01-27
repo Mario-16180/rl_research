@@ -1,0 +1,36 @@
+name: rl_hyperparam_search_lunar_lander
+project: rl_research_mbzuai
+program: experimenting/lunar_lander_training.py
+method: bayes
+metric:
+  goal: maximize
+  name: train/mean_reward_eval
+parameters:
+  number_of_curriculums:
+    values: [2, 3, 4, 5, 6, 7, 8, 9, 10]
+  anti_curriculum:
+    values: [True, False]
+  max_train_steps_per_curriculum_criterion1:
+    values: [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]
+  learning_rate:
+    min: 0.00005
+    max: 0.005
+  gamma:
+    values: [0.9, 0.95, 0.99]
+  tau:
+    min: 0.0001
+    max: 0.01
+  epsilon_decay:
+    min: 0.0075
+    max: 0.015
+  first_layer_neurons:
+    values: [32, 64, 128, 256]
+  second_layer_neurons:
+    values: [32, 64, 128, 256]
+  initial_random_experiences:
+    values: [5000, 10000, 20000, 25000, 30000, 35000, 40000, 45000, 50000]
+  memory_capacity:
+    values: [50000, 75000, 100000]
+  grad_clip_value:
+    min: 10
+    max: 1000

@@ -39,10 +39,21 @@ class lunar_lander_mlp(nn.Module):
                     "loss": loss}, path + ".tar")
         # Save the buffer
         pickle.dump(buffer, open(path + "_buffer", "wb"))
+    
+    def load_model(self, path):
+        checkpoint = torch.load(path + ".tar")
+        self.load_state_dict(checkpoint["model_state_dict"])
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        episode = checkpoint["episode"]
+        train_step = checkpoint["step"]
+        loss = checkpoint["loss"]
+        buffer = pickle.load(open(path + "_buffer", "rb"))
+        return episode, train_step, optimizer, loss, buffer
 
     def select_action(self, env, state, epsilon_start, epsilon_decay, epsilon_min, current_step, device):
         sample_for_probability = random.random()
-        eps_threshold = epsilon_min + (epsilon_start - epsilon_min) * math.exp(-1. * current_step / epsilon_decay)
+        eps_threshold = epsilon_min + (epsilon_start - epsilon_min) * math.exp(-1. * current_step * epsilon_decay)
         if sample_for_probability > eps_threshold:
             with torch.no_grad():
                 state = torch.tensor([state], device=device, dtype=torch.float32).reshape(1,8)
