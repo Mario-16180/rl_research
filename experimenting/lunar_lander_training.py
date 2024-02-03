@@ -254,7 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('-mcs1', '--max_train_steps_per_curriculum_criterion1', metavar='MCS1', type=int, help='maximum number of training steps per curriculum criterion 1', default=1000)
     parser.add_argument('-mcs2', '--max_train_steps_per_curriculum_criterion2', metavar='MCS2', type=int, help='maximum number of training steps per curriculum criterion 2', default=1000)
     parser.add_argument('-sds', '--stability_dequeue_size', metavar='SDS', type=int, help='size of the stability deque', default=1000)
-    parser.add_argument('-p', '--percentile', metavar='P', type=int, help='percentage of already sorted top experiences, if 1, then all experiences will be considered', default=1)
+    parser.add_argument('-p', '--percentile', metavar='P', type=int, help='percentage of already sorted top experiences, if 0, then all experiences will be considered, if 50, only the second half of orderd experiences is considered', default=0)
     # Misc arguments
     parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='LunarLander-v2')
     parser.add_argument('-r', '--resume', metavar='R', type=lambda x: bool(strtobool(x)), help='resume training', default=False)

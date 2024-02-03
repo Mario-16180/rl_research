@@ -226,7 +226,7 @@ class memory_lunar_lander():
 
 class memory_lunar_lander_curriculum():
     def __init__(self, max_size, max_train_steps_per_curriculum_criterion1, max_train_steps_per_curriculum_criterion2, 
-                 stability_dequeue_size=2500, gamma=0.99, curriculums=3, anti_curriculum=False, percentile=0.5):
+                 stability_dequeue_size=2500, gamma=0.99, curriculums=3, anti_curriculum=False, percentile=100):
         self.buffer_size = max_size
         self.buffer_deque = deque(maxlen = max_size)
         self.losses_deque = deque(maxlen = stability_dequeue_size) # For the stability criterion
@@ -316,6 +316,67 @@ class memory_lunar_lander_curriculum():
             curriculum_indices = np.array_split(np.argsort(td_list), self.number_of_curriculums)
         # Create sub dequeues for each curriculum
         self.buffer_deque_curriculum = [deque(maxlen = self.buffer_size // self.number_of_curriculums) for _ in range(self.number_of_curriculums)]
+        for i, indices in enumerate(curriculum_indices):
+            for index in indices:
+                self.buffer_deque_curriculum[i].append(self.buffer_deque[index])
+
+class memory_bipedal_walker():
+    def __init__(self, max_size, curriculum=False, max_steps_per_curriculum=1000, n_curriculums=5, anti_curriculum=False, percentile=1):
+        self.buffer_size = max_size
+        self.buffer_deque = deque(maxlen = self.buffer_size)
+        self.curriculum = curriculum
+        self.max_steps_per_curriculum = max_steps_per_curriculum
+        self.n_curriculums = n_curriculums
+        self.anti_curriculum = anti_curriculum
+        self.percentile = percentile
+        self.counter = 0
+        self.flag_first_curriculum = True
+
+    def add(self, experience):
+        """
+        The experience transition consists of a tuple of 5 if curriculum learning is not used, but 6 if it is used.
+        The first 5 elements are the following:
+        - current_state: The current state of the environment. As a numpy array.
+        - action: The action taken by the agent. As a numpy array.
+        - reward: The reward obtained from the environment
+        - next_state: The next state of the environment
+        - done: Whether the episode has ended or not
+        The last element is the temporal difference error, which is only used if curriculum learning is used.
+
+        """
+        self.buffer_deque.append(experience)
+
+    def sample(self, batch_size):
+        if self.curriculum:
+            if self.flag_first_curriculum:
+                self.make_curriculums()
+                self.flag_first_curriculum = False
+                self.current_curriculum = 0
+            elif self.counter >= self.max_steps_per_curriculum:
+                self.current_curriculum += 1
+                self.counter = 0
+            if self.current_curriculum >= self.n_curriculums:
+                self.make_curriculums()
+                self.current_curriculum = 0
+            self.counter += 1
+            indices = np.random.choice(np.arange(len(self.buffer_deque_curriculum[self.current_curriculum])), size=batch_size, replace=False)
+            return [self.buffer_deque_curriculum[self.current_curriculum][k] for k in indices]
+        else:
+            indices = np.random.choice(np.arange(len(self.buffer_deque)), size = batch_size, replace=False)
+            return [self.buffer_deque[i] for i in indices]
+        
+    def make_curriculums(self):
+        # Make curriculums based on temporal error
+        td_list = [self.buffer_deque[i][-1] for i in range(len(self.buffer_deque))]
+        td_list = np.array(td_list[int(len(td_list) * self.percentile / 100):])
+        if self.anti_curriculum:
+            # Get the indices to n curriculums
+            curriculum_indices = np.array_split(np.argsort(td_list)[::-1], self.n_curriculums)
+        else:
+            # Get the indices to make n curriculums
+            curriculum_indices = np.array_split(np.argsort(td_list), self.n_curriculums)
+        # Create sub dequeues for each curriculum
+        self.buffer_deque_curriculum = [deque(maxlen = self.buffer_size // self.n_curriculums) for _ in range(self.n_curriculums)]
         for i, indices in enumerate(curriculum_indices):
             for index in indices:
                 self.buffer_deque_curriculum[i].append(self.buffer_deque[index])

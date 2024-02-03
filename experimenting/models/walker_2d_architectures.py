@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import math
-import random
 import pickle
 
 """
@@ -12,7 +10,7 @@ The third network will be the Q network, which will output the Q value of the st
 
 Info about the bipedal walker environment:
 - Observation space: Box(24,) (24 continuous values)
-- Action space: Box(4,) (4 continuous values)
+- Action space: Box(4,) (4 continuous values, from -1 to 1, so no need to scale the actions)
 - Reward range: (-100, 300)
 
 """
@@ -20,7 +18,7 @@ Info about the bipedal walker environment:
 # Define the Actor network
 class actor_network(nn.Module):
     def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, 
-                 std_max, *args, **kwargs) -> None:
+                 std_max=1, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
@@ -28,6 +26,7 @@ class actor_network(nn.Module):
         self.n_neurons_second_layer = n_neurons_second_layer
         self.std_min = 1e-6
         self.std_max = std_max
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
     def build_network(self):    
         self.network = nn.Sequential(
@@ -46,20 +45,41 @@ class actor_network(nn.Module):
         std = torch.clamp(std, self.std_min, self.std_max)
         return mean, std
     
-    def sample_action(self, state, device):
+    def sample_action(self, state, reparameterize=True):
         mean, std = self.forward(state)
         normal = torch.distributions.Normal(mean, std)
-        z = normal.sample()
-        action = torch.tanh(z).detach().cpu().numpy()
-        return action
+        if reparameterize:
+            z = normal.rsample()
+        else:
+            z = normal.sample()
+        action = torch.tanh(z).detach().cpu().numpy() # Range from -1 to 1
+        log_prob = normal.log_prob(z) # Taking the log of the probability density function of the normal distribution
+        log_prob -= torch.log(1 - action.pow(2) + self.std_min)
+        log_prob = log_prob.sum(1, keepdim=True) # Since the Jacobian of tanh is 1 - tanh(x)^2 and diagonal, we need to sum the log_probabilities
+        return action, log_prob
     
-    def sample(self, state):
-        pass
+    def save_model(self, episode, train_step, optimizer, loss, buffer, path):
+        # Save the model
+        torch.save({"episode": episode, "step": train_step, "model_state_dict": self.state_dict(), "optimizer_state_dict": optimizer.state_dict(), 
+                    "loss": loss}, path + ".tar")
+        # Save the buffer
+        pickle.dump(buffer, open(path + "_buffer", "wb"))
 
-# Define the Critic network
+    def load_model(self, path):
+        checkpoint = torch.load(path + ".tar")
+        self.load_state_dict(checkpoint["model_state_dict"])
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        episode = checkpoint["episode"]
+        train_step = checkpoint["step"]
+        loss = checkpoint["loss"]
+        buffer = pickle.load(open(path + "_buffer", "rb"))
+        return episode, train_step, optimizer, loss, buffer
+
+# Define the Critic network (Q function)
 class critic_network(nn.Module):
     def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, *args, **kwargs) -> None:
-        super(critic_network, self).__init__()
+        super().__init__(*args, **kwargs)
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
         self.n_neurons_first_layer = n_neurons_first_layer
@@ -98,8 +118,8 @@ class critic_network(nn.Module):
         buffer = pickle.load(open(path + "_buffer", "rb"))
         return episode, train_step, optimizer, loss, buffer
 
-# Define the Q network
-class q_network(nn.Module):
+# Define the Value network (V function)
+class v_network(nn.Module):
     def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
