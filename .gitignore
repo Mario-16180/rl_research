@@ -166,3 +166,6 @@ experimenting/wandb
 # Ignore checkpoint files
 experimenting/models/trained_models/checkpoint.tar
 experimenting/models/trained_models/checkpoint_buffer
+
+# Ignore trained models
+experimenting/models/trained_models/*.pth
