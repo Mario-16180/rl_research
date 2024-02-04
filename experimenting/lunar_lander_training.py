@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_value, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
                         first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, resume, project_name, max_train_steps_per_curriculum, 
-                        number_of_curriculums, use_curriculum, gpu, anti_curriculum, percentile, save_agent, sweep, seed):
+                        number_of_curriculums, use_curriculum, gpu, anti_curriculum, percentile, save_agent, sweep, seed, criterion_name):
     # Initialize the environment
     env = gym.make(name_env)
     env_eval = gym.make(name_env)
@@ -42,7 +42,11 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
     replay_buffer.populate_memory_random(env, k_initial_experiences=initial_random_experiences, gamma=gamma, model=model_policy, device=device)
 
     optimizer = torch.optim.Adam(model_policy.parameters(), lr=learning_rate)
-    criterion = nn.HuberLoss()
+
+    if criterion_name == 'MSE':
+        criterion = nn.MSELoss()
+    elif criterion_name == 'Huber':
+        criterion = nn.HuberLoss()
 
     ##### Login wandb + Hyperparameters and metadata
     # Start a new wandb run to track this script
@@ -66,8 +70,8 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
     "epsilon_min": epsilon_min,
     "tau": tau,
     "memory_length": replay_buffer.buffer_size,
-    "optimizer": optimizer,
-    "criterion": criterion,
+    "optimizer": "Adam",
+    "criterion": criterion_name,
     "device": device,
     "use_curriculum": replay_buffer.use_curriculum,
     "n_curriculums": replay_buffer.n_curriculums,
@@ -146,21 +150,21 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
             # Evaluate the agent every 500 steps
             if current_step % 500 == 0:
                 env_eval.reset(seed=42)
-                rewards = []
+                rewards_eval = []
                 for _ in range(10):
                     current_state_eval = env_eval.reset()[0]
                     done_eval = False
                     reward_acc = 0
                     for k in range(max_steps):
                         action_eval, _ = model_policy.select_action(env_eval, current_state_eval, 0, 1, 0, current_step, device)
-                        next_state_eval, reward, done_eval, _, info = env_eval.step(action_eval)
+                        next_state_eval, reward_eval, done_eval, _, info = env_eval.step(action_eval)
                         current_state_eval = next_state_eval
-                        reward_acc += reward
+                        reward_acc += reward_eval
                         if done_eval:
                             break
-                    rewards.append(reward_acc)
-                mean_reward_eval = sum(rewards)/len(rewards)
-                std_reward_eval = np.std(rewards).item()
+                    rewards_eval.append(reward_acc)
+                mean_reward_eval = sum(rewards_eval)/len(rewards_eval)
+                std_reward_eval = np.std(rewards_eval).item()
                 mean_reward_eval_smoothed.append(mean_reward_eval)
                 run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed), 
                          "train/std_reward_eval": std_reward_eval})
@@ -183,15 +187,6 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
             if curriculum:
                 log_dict["train/curriculum"] = replay_buffer.curriculum
             run.log(log_dict)
-
-            # For lunar lander, it is considered solved after 200 points
-            # This should be only available for sweeping, as we want results as fast as possible
-            if mean_reward_eval > 200 and sweep:
-                run.save
-                run.finish()
-                if save_agent:
-                    torch.save(model_policy.state_dict(), 'experimenting/models/trained_models/' + run_name + '.pt')
-                return
             
             # If the episode is done, break the loop
             if done:
@@ -227,28 +222,26 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=200)
     parser.add_argument('-ms', '--max_steps', metavar='MS', type=int, help='maximum number of steps per episode', default=1000)
     parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=32)
-    parser.add_argument('-gc', '--grad_clip_value', metavar='GC', type=float, help='value to clip the gradients', default=100) # 558 best value according to sweep
+    parser.add_argument('-gc', '--grad_clip_value', metavar='GC', type=float, help='value to clip the gradients', default=10) 
     # Reinforcement learning related arguments
     parser.add_argument('-g', '--gamma', metavar='G', type=float, help='discount factor', default=0.99)
     parser.add_argument('-epss', '--epsilon_start', metavar='ES', type=float, help='initial value of epsilon', default=1.0)
     parser.add_argument('-epsm', '--epsilon_min', metavar='EM', type=float, help='minimum value of epsilon', default=5e-2)
-    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=0.01) # 0.01187082732531346 best value according to sweep
-    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.003) # 0.002997654037176163 best value according to sweep
-    parser.add_argument('-t', '--tau', metavar='T', type=float, help='parameter for updating the target network', default=0.004) # 0.004356151032177706 best value according to sweep
+    parser.add_argument('-epsd', '--epsilon_decay', metavar='ED', type=float, help='decay rate of epsilon', default=0.01)
+    parser.add_argument('-lr', '--learning_rate', metavar='LR', type=float, help='learning rate', default=0.003)
+    parser.add_argument('-t', '--tau', metavar='T', type=float, help='parameter for updating the target network', default=0.004)
+    parser.add_argument('-cn', '--criterion_name', metavar='CN', type=str, help='criterion to use for the loss', default='MSE')
     # Hyperparameters for the neural network
-    parser.add_argument('-fln', '--first_layer_neurons', metavar='FLN', type=int, help='number of neurons in the first layer', default=64) # 256 best value according to sweep
-    parser.add_argument('-sln', '--second_layer_neurons', metavar='SLN', type=int, help='number of neurons in the second layer', default=64) # 256 best value according to sweep
+    parser.add_argument('-fln', '--first_layer_neurons', metavar='FLN', type=int, help='number of neurons in the first layer', default=64)
+    parser.add_argument('-sln', '--second_layer_neurons', metavar='SLN', type=int, help='number of neurons in the second layer', default=64)
     # Replay buffer related arguments
-    parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=25000) # 25000 best value according to sweep
+    parser.add_argument('-ire', '--initial_random_experiences', metavar='IRE', type=int, help='number of initial random experiences', default=25000)
     parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=100000)
     # Curriculum related arguments
     parser.add_argument('-cn', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=5)
     parser.add_argument('-c', '--curriculum', metavar='C', type=lambda x: bool(strtobool(x)), help='use curriculum learning', default=False)
     parser.add_argument('-ac', '--anti_curriculum', metavar='AC', type=lambda x: bool(strtobool(x)), help='going from easy to hard = false, hard to easy = true', default=False)
-    parser.add_argument('-cc', '--curriculum_criterion', metavar='CC', type=int, help='1 = time-step related criterion to change curriculum, 2 = stability in the loss curve criterion', default=1)
-    parser.add_argument('-mcs1', '--max_train_steps_per_curriculum_criterion1', metavar='MCS1', type=int, help='maximum number of training steps per curriculum criterion 1', default=1000)
-    parser.add_argument('-mcs2', '--max_train_steps_per_curriculum_criterion2', metavar='MCS2', type=int, help='maximum number of training steps per curriculum criterion 2', default=1000)
-    parser.add_argument('-sds', '--stability_dequeue_size', metavar='SDS', type=int, help='size of the stability deque', default=1000)
+    parser.add_argument('-mcs', '--max_train_steps_per_curriculum', metavar='MCS', type=int, help='maximum number of training steps per curriculum', default=1000)
     parser.add_argument('-p', '--percentile', metavar='P', type=int, help='percentage of already sorted top experiences, if 0, then all experiences will be considered, if 50, only the second half of orderd experiences is considered', default=0)
     # Misc arguments
     parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='LunarLander-v2')
@@ -272,6 +265,7 @@ if __name__ == '__main__':
     epsilon_min = args.epsilon_min
     learning_rate = args.learning_rate
     tau = args.tau
+    criterion_name = args.criterion_name
     # Neural network architecture related arguments
     first_layer_neurons = args.first_layer_neurons
     second_layer_neurons = args.second_layer_neurons
@@ -282,10 +276,7 @@ if __name__ == '__main__':
     number_of_curriculums = args.number_of_curriculums
     curriculum = args.curriculum
     anti_curriculum = args.anti_curriculum
-    curriculum_criterion = args.curriculum_criterion
-    max_train_steps_per_curriculum_criterion1 = args.max_train_steps_per_curriculum_criterion1
-    max_train_steps_per_curriculum_criterion2 = args.max_train_steps_per_curriculum_criterion2
-    stability_dequeue_size = args.stability_dequeue_size
+    max_train_steps_per_curriculum = args.max_train_steps_per_curriculum
     percentile = args.percentile
     # Misc arguments
     name_env = args.name_env
@@ -302,8 +293,7 @@ if __name__ == '__main__':
                            gamma=gamma, epsilon_start=epsilon_start, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
                             learning_rate=learning_rate, tau=tau, first_layer_neurons=first_layer_neurons, second_layer_neurons=second_layer_neurons, 
                             initial_random_experiences=initial_random_experiences, 
-                            memory_capacity=memory_capacity, max_train_steps_per_curriculum_criterion1=max_train_steps_per_curriculum_criterion1,
-                            max_train_steps_per_curriculum_criterion2=max_train_steps_per_curriculum_criterion2, stability_dequeue_size=stability_dequeue_size,
+                            memory_capacity=memory_capacity, max_train_steps_per_curriculum=max_train_steps_per_curriculum,
                             percentile=percentile, resume=resume, project_name=project_name,
                             number_of_curriculums=number_of_curriculums, curriculum=curriculum, anti_curriculum=anti_curriculum, 
-                            curriculum_criterion=curriculum_criterion, gpu=gpu, save_agent=save_agent, sweep=sweep, seed=seed)
+                            gpu=gpu, save_agent=save_agent, sweep=sweep, seed=seed, criterion_name=criterion_name)

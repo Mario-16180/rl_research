@@ -17,7 +17,7 @@ Info about the bipedal walker environment:
 
 # Define the Actor network
 class actor_network(nn.Module):
-    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, std_max=1) -> None:
+    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, std_max=2) -> None:
         super(actor_network, self).__init__()
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
