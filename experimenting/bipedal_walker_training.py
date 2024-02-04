@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, 
                              use_curriculum, n_episodes, max_t, batch_size, gamma, 
-                             tau, grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, buffer_size, project_name,
+                             tau, temperature_factor, grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, buffer_size, project_name,
                              number_of_curriculums, anti_curriculum, seed, sweep, save_agent):
     """
     alpha: learning rate for the actor
@@ -74,6 +74,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     "n_neurons_first_layer": n_neurons_first_layer,
     "n_neurons_second_layer": n_neurons_second_layer,
     "tau": tau,
+    "temperature_factor": temperature_factor,
     "memory_length": replay_buffer.buffer_size,
     "optimizer": "Adam",
     "device": device,
@@ -96,7 +97,9 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     mean_reward_eval_smoothed = deque(maxlen=50)
     mean_reward_eval = 0
     std_reward_eval = 0
-    
+    actor_loss = 0
+    critic_loss = 0
+    value_loss = 0
     # Initialize the training loop
     for episode in tqdm(range(n_episodes)):
         current_state = env.reset()
@@ -124,19 +127,17 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                     td_error = reward + gamma * next_state_value - v_1(current_state_tensor, torch.tensor([action], device=device, dtype=torch.float32))
                     td_error = td_error.detach().cpu().numpy()[0]
                 # Add the experience transition to the replay buffer
-                replay_buffer.add(current_state, action, reward, next_state, done, td_error)
+                replay_buffer.add((current_state, action, reward, next_state, done, td_error))
             else:
                 replay_buffer.add((current_state, action, reward, next_state, done))
                 
             # Perform optimization step
-            if len(replay_buffer.buffer_deque) > len(minibatch):
+            if len(replay_buffer.buffer_deque) > batch_size:
                 # Get the minibatch from the replay buffer
-                minibatch = replay_buffer.sample_batch(batch_size) 
-                loss, critic_1_loss, critic_2_loss, v_1_loss, v_2_loss = perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, minibatch, 
-                                                                                                   gamma, tau, grad_clip_value, device)
-                # Logging the losses
-                run.log({"train/loss": loss, "train/critic_1_loss": critic_1_loss, "train/critic_2_loss": critic_2_loss, 
-                         "train/q_1_loss": v_1_loss, "train/q_2_loss": v_2_loss})
+                minibatch = replay_buffer.sample(batch_size) 
+                actor_loss, critic_loss, value_loss = perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, 
+                                                                                minibatch, gamma, tau, temperature_factor, device, 
+                                                                                batch_size, grad_clip_value, use_curriculum)
 
             # Update the current state
             current_state = next_state.copy()
@@ -169,24 +170,38 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
             # Calculating the gradients of the networks
             squared_norm_gradients_actor = 0
             for w in actor.parameters():
-                squared_norm_gradients_actor += (torch.norm(w.grad)**2).item()
+                if w.grad is None:
+                    break
+                else:
+                    squared_norm_gradients_actor += (torch.norm(w.grad)**2).item()
             squared_norm_gradients_critic = 0
             for w in critic_1.parameters():
-                squared_norm_gradients_critic += (torch.norm(w.grad)**2).item()
+                if w.grad is None:
+                    break
+                else:
+                    squared_norm_gradients_critic += (torch.norm(w.grad)**2).item()
             squared_norm_gradients_value = 0
             for w in v_1.parameters():
-                squared_norm_gradients_value += (torch.norm(w.grad)**2).item()
+                if w.grad is None:
+                    break
+                else:
+                    squared_norm_gradients_value += (torch.norm(w.grad)**2).item()
 
             # Logging metrics to wandb
             log_dict = {
                 "train/step": current_step,
                 "train/training_reward": reward,
                 "train/training_episode": episode,
-                "train/loss": loss,
                 "train/squared_norm_gradients_actor": squared_norm_gradients_actor,
                 "train/squared_norm_gradients_critic": squared_norm_gradients_critic,
                 "train/squared_norm_gradients_value": squared_norm_gradients_value,
-                "train/action_taken": action,
+                "train/action_taken_1": action[0],
+                "train/action_taken_2": action[1],
+                "train/action_taken_3": action[2],
+                "train/action_taken_4": action[3],
+                "train/actor_loss": actor_loss,
+                "train/critic_loss": critic_loss,
+                "train/q_1_loss": value_loss,
                 "train/replay_buffer_#ofexperiences": len(replay_buffer.buffer_deque)
             }
             if use_curriculum:
@@ -230,6 +245,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size for the replay buffer')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
     parser.add_argument('--tau', type=float, default=0.005, help='Soft update parameter for the target networks')
+    parser.add_argument('--temperature_factor', type=float, default=2, help='Temperature factor for the soft actor critic algorithm')
     parser.add_argument('--grad_clip_value', type=float, default=1.0, help='Value to clip the gradients to')
     parser.add_argument('--n_neurons_first_layer', type=int, default=256, help='Number of neurons in the first layer')
     parser.add_argument('--n_neurons_second_layer', type=int, default=256, help='Number of neurons in the second layer')

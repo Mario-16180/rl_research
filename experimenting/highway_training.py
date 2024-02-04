@@ -13,7 +13,7 @@ from collections import deque
 from models.lunar_lander_dqn_architecture import lunar_lander_mlp
 from rl_utils.replay_buffer import memory_lunar_lander as memory
 from rl_utils.replay_buffer import memory_lunar_lander_curriculum as memory_with_curriculum
-from rl_utils.optimization import perform_optimization_step
+from experimenting.rl_utils.optimization_dqn import perform_optimization_step
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
