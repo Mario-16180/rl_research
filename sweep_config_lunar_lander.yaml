@@ -4,13 +4,13 @@ program: experimenting/lunar_lander_training.py
 method: bayes
 metric:
   goal: maximize
-  name: train/mean_reward_eval
+  name: train/mean_reward_eval_smoothed
 parameters:
   learning_rate:
-    min: 0.00005
+    min: 0.0001
     max: 0.005
   gamma:
-    values: [0.9, 0.95, 0.99]
+    values: [0.99, 0.995, 0.999, 0.9995, 0.9999]
   tau:
     min: 0.0001
     max: 0.01
@@ -22,9 +22,9 @@ parameters:
   second_layer_neurons:
     values: [32, 64, 128, 256]
   initial_random_experiences:
-    values: [5000, 10000, 20000, 25000, 30000, 35000, 40000, 45000, 50000]
+    values: [32, 256, 1024, 2048, 4096, 8192]
   memory_capacity:
     values: [50000, 75000, 100000]
   grad_clip_value:
-    min: 10
-    max: 1000
+    min: 0.5
+    max: 10

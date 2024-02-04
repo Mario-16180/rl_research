@@ -15,9 +15,9 @@ from rl_utils.optimization_dqn import perform_optimization_step
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
-def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_value, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
+def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_size, grad_clip_value, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
                         first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, resume, project_name, max_train_steps_per_curriculum, 
-                        number_of_curriculums, use_curriculum, gpu, anti_curriculum, percentile, save_agent, sweep, seed, criterion_name):
+                        number_of_curriculums, use_curriculum, gpu, anti_curriculum, percentile, save_agent, seed, criterion_name):
     # Initialize the environment
     env = gym.make(name_env)
     env_eval = gym.make(name_env)
@@ -58,7 +58,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
     "architecture": "Lunar lander basic MLP",
     "environment": name_env,
     "learning_rate": learning_rate,
-    "episodes": episodes,
+    "max_optimization_steps": max_optimization_steps,
     "batch_size": batch_size,
     "gamma": gamma,
     "grad_clip_value": grad_clip_value,
@@ -93,7 +93,6 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
         model_policy.load_state_dict(checkpoint['model_state_dict'])
         model_target.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        current_episode = checkpoint['episode']
         current_step = checkpoint['step']
         loss = checkpoint['loss']
         replay_buffer = pickle.load(open('models/trained_models/checkpoint_buffer', 'rb'))
@@ -102,22 +101,22 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
     mean_reward_eval_smoothed = deque(maxlen=100)
     mean_reward_eval = 0
     std_reward_eval = 0
+    
     # Training loop
-    for episode in tqdm(range(current_episode, episodes)):
+    def generator():
+        while current_step < max_optimization_steps:
+            yield
+    for _ in tqdm(generator(), total=max_optimization_steps):
         current_state = env.reset()[0]
         done = False
         train_reward = 0
         for i in range(max_steps):
-            action, eps = model_policy.select_action(env, current_state, epsilon_start, epsilon_decay, epsilon_min, episode, device)
+            action, eps = model_policy.select_action(env, current_state, epsilon_start, epsilon_decay, epsilon_min, current_step, device)
             next_state, reward, done, _, info = env.step(action)
             
             minibatch = replay_buffer.sample(batch_size)
 
             loss = perform_optimization_step(model_policy, model_target, minibatch, gamma, optimizer, criterion, device, batch_size, grad_clip_value=grad_clip_value, curriculum=curriculum)
-
-            # Criterion number 2 corresponds changing curriculums when a stability in the loss curve is detected
-            #if curriculum_criterion == 2:
-            #    replay_buffer.losses_deque.append(loss)
 
             if curriculum: 
                 # Calculate temporal difference
@@ -147,8 +146,8 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
             # Update current state
             current_state = next_state.copy()
 
-            # Evaluate the agent every 500 steps
-            if current_step % 500 == 0:
+            # Evaluate the agent every 250 steps
+            if current_step % 250 == 0:
                 env_eval.reset(seed=42)
                 rewards_eval = []
                 for _ in range(10):
@@ -168,8 +167,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
                 mean_reward_eval_smoothed.append(mean_reward_eval)
                 run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed), 
                          "train/std_reward_eval": std_reward_eval})
-                model_policy.save_model(episode=episode, train_step=current_step, optimizer=optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint_lunar_lander')
-
+            
             # Logging metrics to wandb
             squared_norm_gradients = 0
             for w in model_policy.parameters():
@@ -177,7 +175,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
             log_dict = {
                 "train/step": current_step,
                 "train/training_reward": reward,
-                "train/training_episode": episode,
+                "train/training_episode": current_episode,
                 "train/loss": loss,
                 "train/squared_norm_gradients": squared_norm_gradients,
                 "train/action_taken": action,
@@ -195,7 +193,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
         # Logging the total reward of the training episode
         log_dict = {
             "train_ep/episode_reward": train_reward,
-            "train_ep/episode": episode,
+            "train_ep/episode": current_episode,
             "train_ep/mean_reward_eval": mean_reward_eval,
             "train_ep/std_reward_eval": std_reward_eval
         }
@@ -219,9 +217,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Arguments for training the DQN agent')
     # Training related arguments
-    parser.add_argument('-e', '--episodes', metavar='E', type=int, help='number of training episodes', default=200)
+    parser.add_argument('-mos', '--max_optimization_steps', metavar='E', type=int, help='maximum number of training steps, i.e. when the function optimization is called', default=300_000)
     parser.add_argument('-ms', '--max_steps', metavar='MS', type=int, help='maximum number of steps per episode', default=1000)
-    parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=32)
+    parser.add_argument('-bs', '--batch_size', metavar='B', type=int, help='number of transitions to train from the replay buffer',default=64)
     parser.add_argument('-gc', '--grad_clip_value', metavar='GC', type=float, help='value to clip the gradients', default=10) 
     # Reinforcement learning related arguments
     parser.add_argument('-g', '--gamma', metavar='G', type=float, help='discount factor', default=0.99)
@@ -249,7 +247,6 @@ if __name__ == '__main__':
     parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='lunar_lander')
     parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
     parser.add_argument('-sa', '--save_agent', metavar='SA', type=lambda x: bool(strtobool(x)), help='save the agent', default=False)
-    parser.add_argument('-s', '--sweep', metavar='S', type=lambda x: bool(strtobool(x)), help='sweep the hyperparameters', default=False)
     parser.add_argument('-seed', '--seed', metavar='SEED', type=int, help='seed for reproducibility', default=42)
     args = parser.parse_args()
 
@@ -284,7 +281,6 @@ if __name__ == '__main__':
     project_name = args.project_name
     gpu = args.gpu
     save_agent = args.save_agent
-    sweep = args.sweep
     seed = args.seed
     
     set_seed(seed)
@@ -296,4 +292,4 @@ if __name__ == '__main__':
                             memory_capacity=memory_capacity, max_train_steps_per_curriculum=max_train_steps_per_curriculum,
                             percentile=percentile, resume=resume, project_name=project_name,
                             number_of_curriculums=number_of_curriculums, curriculum=curriculum, anti_curriculum=anti_curriculum, 
-                            gpu=gpu, save_agent=save_agent, sweep=sweep, seed=seed, criterion_name=criterion_name)
+                            gpu=gpu, save_agent=save_agent, seed=seed, criterion_name=criterion_name)
