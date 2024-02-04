@@ -17,16 +17,18 @@ Info about the bipedal walker environment:
 
 # Define the Actor network
 class actor_network(nn.Module):
-    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, 
-                 std_max=1, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, std_max=1) -> None:
+        super(actor_network, self).__init__()
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
         self.n_neurons_first_layer = n_neurons_first_layer
         self.n_neurons_second_layer = n_neurons_second_layer
+        self.device = device
         self.std_min = 1e-6
         self.std_max = std_max
+        self.build_network()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        self.to(self.device)
 
     def build_network(self):    
         self.network = nn.Sequential(
@@ -54,7 +56,7 @@ class actor_network(nn.Module):
             z = normal.sample()
         action = torch.tanh(z).detach().cpu().numpy() # Range from -1 to 1
         log_prob = normal.log_prob(z) # Taking the log of the probability density function of the normal distribution
-        log_prob -= torch.log(1 - action.pow(2) + self.std_min)
+        log_prob -= torch.log(torch.tensor(1 - action**2 + self.std_min, device=self.device, dtype=torch.float32))
         log_prob = log_prob.sum(1, keepdim=True) # Since the Jacobian of tanh is 1 - tanh(x)^2 and diagonal, we need to sum the log_probabilities
         return action, log_prob
     
@@ -78,14 +80,16 @@ class actor_network(nn.Module):
 
 # Define the Critic network (Q function)
 class critic_network(nn.Module):
-    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device) -> None:
+        super(critic_network, self).__init__()
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
+        self.device = device
         self.n_neurons_first_layer = n_neurons_first_layer
         self.n_neurons_second_layer = n_neurons_second_layer
-        self.build_network(n_neurons_first_layer, n_neurons_second_layer)
+        self.build_network()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        self.to(self.device)
 
     def build_network(self):
         self.network = nn.Sequential(
@@ -120,14 +124,16 @@ class critic_network(nn.Module):
 
 # Define the Value network (V function)
 class v_network(nn.Module):
-    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device) -> None:
+        super(v_network, self).__init__()
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
+        self.device = device
         self.n_neurons_first_layer = n_neurons_first_layer
         self.n_neurons_second_layer = n_neurons_second_layer
-        self.build_network(n_neurons_first_layer, n_neurons_second_layer)
+        self.build_network()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        self.to(self.device)
 
     def build_network(self):    
         self.network = nn.Sequential(

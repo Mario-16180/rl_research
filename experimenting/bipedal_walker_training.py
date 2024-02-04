@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 # Let's check if the environment is working
 
 def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, 
-                             curriculum, n_episodes, max_t, batch_size, gamma, 
+                             use_curriculum, n_episodes, max_t, batch_size, gamma, 
                              tau, grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, buffer_size, project_name,
                              number_of_curriculums, anti_curriculum, seed, sweep, save_agent):
     """
@@ -44,17 +44,14 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
         print(f"Using device: {device}")
 
     # Initialize the networks
-    actor = actor_network(lr=alpha, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, std_max=2.0).to(device)
-    critic_1 = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer).to(device)
-    critic_2 = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer).to(device)
-    v_1 = v_network(lr=theta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer).to(device)
-    v_2_target = v_network(lr=theta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer).to(device)
+    actor = actor_network(lr=alpha, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device, std_max=2.0)
+    critic_1 = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
+    critic_2 = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
+    v_1 = v_network(lr=theta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
+    v_2_target = v_network(lr=theta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
 
     # Initialize the replay buffer
     replay_buffer = memory(buffer_size=buffer_size)
-    
-    # Initialize the criterion
-    criterion = nn.MSELoss()
 
     ##### Login to wandb + hyperparameters and metadata
     # Start a new wandb run to track this experiment
@@ -80,7 +77,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     "memory_length": replay_buffer.buffer_size,
     "optimizer": "Adam",
     "device": device,
-    "curriculum": curriculum,
+    "use_curriculum": use_curriculum,
     "number_of_curriculums": number_of_curriculums,
     "anti_curriculum": anti_curriculum,
     "seed": seed,})
@@ -103,19 +100,20 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     # Initialize the training loop
     for episode in tqdm(range(n_episodes)):
         current_state = env.reset()
+        current_state = current_state[0]
         done = False
         total_reward = 0
         for i in range(max_t):
             # Select an action
             current_state_tensor = torch.tensor([current_state], device=device, dtype=torch.float32)
             action, _ = actor.sample_action(current_state_tensor, reparameterize=False)
-            action = action.detach().cpu().numpy()[0]
+            action = action[0]
             # Perform the action
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, _, info = env.step(action)
             
             # Add experience transition to replay buffer, but if we are using curriculum learning, 
-            # then also calculate temporal difference error and save it as well
-            if curriculum:
+            # then calculate temporal difference error and save it as well
+            if use_curriculum:
                 # Calculate the temporal difference error
                 with torch.no_grad():
                     next_state_tensor = torch.tensor([next_state], device=device, dtype=torch.float32)
@@ -128,7 +126,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                 # Add the experience transition to the replay buffer
                 replay_buffer.add(current_state, action, reward, next_state, done, td_error)
             else:
-                replay_buffer.add(current_state, action, reward, next_state, done)
+                replay_buffer.add((current_state, action, reward, next_state, done))
                 
             # Perform optimization step
             if len(replay_buffer.buffer_deque) > len(minibatch):
@@ -150,7 +148,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
             if current_step % 500 == 0:
                 env_eval.reset(seed=42)
                 rewards = []
-                for _ in range(20):
+                for _ in range(10):
                     current_state_eval = env_eval.reset()[0]
                     done_eval = False
                     reward_acc = 0
@@ -167,7 +165,6 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                 mean_reward_eval_smoothed.append(mean_reward_eval)
                 run.log({"train/mean_reward_eval": mean_reward_eval, "train/mean_reward_eval_smoothed": sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed), 
                          "train/std_reward_eval": std_reward_eval})
-                actor.save_model(episode=episode, train_step=current_step, optimizer=actor.optimizer, loss=loss, buffer=replay_buffer, path='experimenting/models/trained_models/checkpoint_bipedal')
 
             # Calculating the gradients of the networks
             squared_norm_gradients_actor = 0
@@ -192,20 +189,10 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                 "train/action_taken": action,
                 "train/replay_buffer_#ofexperiences": len(replay_buffer.buffer_deque)
             }
-            if curriculum:
-                log_dict["train/curriculum"] = replay_buffer.curriculum
+            if use_curriculum:
+                log_dict["train/curriculum"] = replay_buffer.current_curriculum
             run.log(log_dict)
-
-            # For lunar lander, it is considered solved after 200 points
-            # This should be only available for sweeping, as we want results as fast as possible
-            if mean_reward_eval > 200 and sweep:
-                run.save
-                run.finish()
-                if save_agent:
-                    torch.save(actor.state_dict(), 'experimenting/models/trained_models/' + run_name + '.pt')
-                return
-            ###### End of logging to wandb
-
+            ###### End of logging to wandb of inner loop
 
             # Check if the episode is done
             if done:
@@ -225,7 +212,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     run.save
     run.finish()
     if save_agent:
-        torch.save(actor.state_dict(), 'experimenting/models/trained_models/lunar_lander/' + run_name + '.pt')
+        torch.save(actor.state_dict(), 'experimenting/models/trained_models/bipedal_walker/' + run_name + '.pt')
 
 
 if __name__ == "__main__":
@@ -233,4 +220,50 @@ if __name__ == "__main__":
     # Misc arguments
     parser.add_argument('--name_env', type=str, default="BipedalWalker-v3", help='Name of the environment')
     parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
-    
+    # Rest of the arguments
+    parser.add_argument('--alpha', type=float, default=0.0003, help='Learning rate for the actor')
+    parser.add_argument('--beta', type=float, default=0.0003, help='Learning rate for the critic')
+    parser.add_argument('--theta', type=float, default=0.0003, help='Learning rate for the q network')
+    parser.add_argument('--use_curriculum', type=bool, default=False, help='Whether to use curriculum learning')
+    parser.add_argument('--n_episodes', type=int, default=1000, help='Number of episodes to train for')
+    parser.add_argument('--max_t', type=int, default=1000, help='Maximum number of steps per episode')
+    parser.add_argument('--batch_size', type=int, default=256, help='Batch size for the replay buffer')
+    parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
+    parser.add_argument('--tau', type=float, default=0.005, help='Soft update parameter for the target networks')
+    parser.add_argument('--grad_clip_value', type=float, default=1.0, help='Value to clip the gradients to')
+    parser.add_argument('--n_neurons_first_layer', type=int, default=256, help='Number of neurons in the first layer')
+    parser.add_argument('--n_neurons_second_layer', type=int, default=256, help='Number of neurons in the second layer')
+    parser.add_argument('--buffer_size', type=int, default=1000000, help='Size of the replay buffer')
+    parser.add_argument('--project_name', type=str, default="sac_bipedal_walker", help='Name of the wandb project')
+    parser.add_argument('--number_of_curriculums', type=int, default=5, help='Number of curriculums to use')
+    parser.add_argument('--anti_curriculum', type=bool, default=False, help='Whether to use anti-curriculum')
+    parser.add_argument('--seed', type=int, default=42, help='Seed for reproducibility')
+    parser.add_argument('--sweep', type=bool, default=False, help='Whether to sweep or not')
+    parser.add_argument('--save_agent', type=bool, default=False, help='Whether to save the agent or not')
+    args = parser.parse_args()
+
+    name_env = args.name_env
+    gpu = args.gpu
+    alpha = args.alpha
+    beta = args.beta
+    theta = args.theta
+    use_curriculum = args.use_curriculum
+    n_episodes = args.n_episodes
+    max_t = args.max_t
+    batch_size = args.batch_size
+    gamma = args.gamma
+    tau = args.tau
+    grad_clip_value = args.grad_clip_value
+    n_neurons_first_layer = args.n_neurons_first_layer
+    n_neurons_second_layer = args.n_neurons_second_layer
+    buffer_size = args.buffer_size
+    project_name = args.project_name
+    number_of_curriculums = args.number_of_curriculums
+    anti_curriculum = args.anti_curriculum
+    seed = args.seed
+    sweep = args.sweep
+    save_agent = args.save_agent
+
+    train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, n_episodes, max_t, batch_size, gamma, tau, 
+                             grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, buffer_size, project_name, 
+                             number_of_curriculums, anti_curriculum, seed, sweep, save_agent)

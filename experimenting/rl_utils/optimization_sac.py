@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, minibatch, gamma, tau, temperature_factor, actor_criterion, critic_criterion, device, batch_size, grad_clip_value=100, curriculum=False):
+def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, minibatch, gamma, tau, temperature_factor, device, batch_size, grad_clip_value=100, curriculum=False):
     if curriculum:
         state_batch = torch.cat([torch.tensor([s], device=device, dtype=torch.float32) for (s, a, r, s_, d, td) in minibatch])
         action_batch = torch.cat([torch.tensor([a], device=device, dtype=torch.int64) for (s, a, r, s_, d, td)  in minibatch]).reshape([batch_size,1])

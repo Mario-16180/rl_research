@@ -11,15 +11,13 @@ from tqdm import tqdm
 from collections import deque
 from models.lunar_lander_dqn_architecture import lunar_lander_mlp
 from rl_utils.replay_buffer import memory_lunar_lander as memory
-from rl_utils.replay_buffer import memory_lunar_lander_curriculum as memory_with_curriculum
 from rl_utils.optimization import perform_optimization_step
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
 def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_value, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
-                        first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, resume, project_name, max_train_steps_per_curriculum_criterion1, 
-                        max_train_steps_per_curriculum_criterion2, stability_dequeue_size, number_of_curriculums, curriculum, gpu, anti_curriculum, curriculum_criterion, 
-                        percentile, save_agent, sweep, seed):
+                        first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, resume, project_name, max_train_steps_per_curriculum, 
+                        number_of_curriculums, use_curriculum, gpu, anti_curriculum, percentile, save_agent, sweep, seed):
     # Initialize the environment
     env = gym.make(name_env)
     env_eval = gym.make(name_env)
@@ -38,16 +36,14 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
     model_target.load_state_dict(model_policy.state_dict())
 
     # Initialize replay buffer if it's empty
-    if curriculum:
-        replay_buffer = memory_with_curriculum(max_size=memory_capacity, curriculums=number_of_curriculums, max_train_steps_per_curriculum_criterion1=max_train_steps_per_curriculum_criterion1, 
-                                               max_train_steps_per_curriculum_criterion2=max_train_steps_per_curriculum_criterion2, stability_dequeue_size=stability_dequeue_size,
-                                               gamma=gamma, percentile=percentile, anti_curriculum=anti_curriculum)
-        replay_buffer.populate_memory_random(model_policy, env, k_initial_experiences=initial_random_experiences, device=device)
-    else:
-        replay_buffer = memory(max_size=memory_capacity)
-        replay_buffer.populate_memory_random(env, k_initial_experiences=initial_random_experiences)
+    replay_buffer = memory(max_size=memory_capacity, max_train_steps_per_curriculum=max_train_steps_per_curriculum, 
+                           use_curriculum=use_curriculum, n_curriculums=number_of_curriculums, anti_curriculum=anti_curriculum, percentile=percentile)
+
+    replay_buffer.populate_memory_random(env, k_initial_experiences=initial_random_experiences, gamma=gamma, model=model_policy, device=device)
+
     optimizer = torch.optim.Adam(model_policy.parameters(), lr=learning_rate)
-    criterion = nn.MSELoss()
+    criterion = nn.HuberLoss()
+
     ##### Login wandb + Hyperparameters and metadata
     # Start a new wandb run to track this script
     run = wandb.init(
@@ -73,11 +69,10 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
     "optimizer": optimizer,
     "criterion": criterion,
     "device": device,
-    "curriculum": curriculum,
-    "number_of_curriculums": number_of_curriculums,
-    "anti_curriculum": anti_curriculum,
-    "curriculum_criterion": curriculum_criterion,
-    "seed": seed,},
+    "use_curriculum": replay_buffer.use_curriculum,
+    "n_curriculums": replay_buffer.n_curriculums,
+    "anti_curriculum": replay_buffer.anti_curriculum,
+    "seed": seed},
     resume=resume,
     )
     run.define_metric("train/step")
@@ -100,7 +95,7 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
         replay_buffer = pickle.load(open('models/trained_models/checkpoint_buffer', 'rb'))
     ##### End of wandb login
 
-    mean_reward_eval_smoothed = deque(maxlen=50)
+    mean_reward_eval_smoothed = deque(maxlen=100)
     mean_reward_eval = 0
     std_reward_eval = 0
     # Training loop
@@ -152,12 +147,12 @@ def train_dqn_lunar_lander(name_env, episodes, max_steps, batch_size, grad_clip_
             if current_step % 500 == 0:
                 env_eval.reset(seed=42)
                 rewards = []
-                for _ in range(20):
+                for _ in range(10):
                     current_state_eval = env_eval.reset()[0]
                     done_eval = False
                     reward_acc = 0
                     for k in range(max_steps):
-                        action_eval, _ = model_policy.select_action(env_eval, current_state_eval, 0.05, 1, 0.05, current_step, device)
+                        action_eval, _ = model_policy.select_action(env_eval, current_state_eval, 0, 1, 0, current_step, device)
                         next_state_eval, reward, done_eval, _, info = env_eval.step(action_eval)
                         current_state_eval = next_state_eval
                         reward_acc += reward
