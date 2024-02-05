@@ -16,7 +16,7 @@ time_steps = 300_000
 #     plt.xlabel('Timesteps')
 #     plt.show()
 
-eps_decay = 2e-5# The lower the value, the slower the decay [7.5e-3 to 2e-5]
+eps_decay = 7.5e-6# The lower the value, the slower the decay [7.5e-6 to 1.5e-5]
 # def select_action(self, env, state, epsilon_start, epsilon_decay, epsilon_min, current_step, device):
 # eps_threshold = epsilon_min + (epsilon_start - epsilon_min) * math.exp(-1. * current_step * epsilon_decay)
 epsilon_by_frame = lambda frame_idx: eps_end + (eps_start - eps_end) * math.exp(-1. * frame_idx * eps_decay)

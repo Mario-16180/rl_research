@@ -50,7 +50,7 @@ class memory_lunar_lander():
             # Getting a random action from action space
             action = environment.action_space.sample()
             next_state, reward, done, _, info = environment.step(action)
-            if self.curriculum:
+            if self.use_curriculum:
                 with torch.no_grad():
                         next_state = torch.tensor([next_state], device=device, dtype=torch.float32)
                         current_state = torch.tensor([current_state], device=device, dtype=torch.float32).reshape(1,8)
@@ -58,7 +58,9 @@ class memory_lunar_lander():
                                                 model.forward(current_state)[0,action])**2).item()
                 next_state = next_state.cpu().numpy()
                 current_state = current_state.cpu().numpy()
-            self.add((current_state, action, reward, next_state, done, temporal_difference))
+                self.add((current_state, action, reward, next_state, done, temporal_difference))
+            else:
+                self.add((current_state, action, reward, next_state, done))
             current_state = next_state
 
     def make_curriculums(self):
