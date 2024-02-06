@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
 def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_size, grad_clip_value, gamma, epsilon_start, epsilon_decay, epsilon_min, learning_rate, tau,
-                        first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, resume, project_name, max_train_steps_per_curriculum, 
+                        first_layer_neurons, second_layer_neurons, initial_random_experiences, memory_capacity, project_name, max_train_steps_per_curriculum, 
                         number_of_curriculums, use_curriculum, gpu, anti_curriculum, percentile, save_agent, seed, criterion_name):
     # Initialize the environment
     env = gym.make(name_env)
@@ -48,7 +48,24 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
     elif criterion_name == 'Huber':
         criterion = nn.HuberLoss()
 
-    ##### Login wandb + Hyperparameters and metadata
+    # Auxiliar function to save the model and log final metrics
+    def save_model_and_log_final_metrics():
+        # Post-training code
+        # Logging the total reward of the training episode
+        log_dict = {
+            "train_ep/episode_reward": train_reward,
+            "train_ep/episode": current_episode,
+            "train_ep/mean_reward_eval": mean_reward_eval,
+            "train_ep/mean_reward_eval_smoothed": average_reward_eval,
+            "train_ep/std_reward_eval": std_reward_eval
+        }
+        run.log(log_dict)
+        run.save
+        run.finish()
+        if save_agent:
+            torch.save(model_policy.state_dict(), 'experimenting/models/trained_models/lunar_lander/' + run_name + '.pt')
+
+    #### Login wandb + Hyperparameters and metadata
     # Start a new wandb run to track this script
     run = wandb.init(
     # Set the wandb project where this run will be logged
@@ -76,8 +93,7 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
     "use_curriculum": replay_buffer.use_curriculum,
     "n_curriculums": replay_buffer.n_curriculums,
     "anti_curriculum": replay_buffer.anti_curriculum,
-    "seed": seed}
-    )
+    "seed": seed})
     run.define_metric("train/step")
     run.define_metric("train_ep/episode")
     run.define_metric("train/*", step_metric="train/step")
@@ -93,7 +109,7 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
     std_reward_eval = 0
     progress_bar = iter(tqdm(range(max_optimization_steps)))
     # Training loop
-    while current_step < max_optimization_steps:
+    while current_step <= max_optimization_steps:
         current_state = env.reset()[0]
         done = False
         train_reward = 0
@@ -123,18 +139,14 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
                 target_weights[name] = tau * policy_weights[name] + (1 - tau) * target_weights[name]
             model_target.load_state_dict(target_weights)
             
-            # Counters
-            current_step += 1 # Training step
-            train_reward += reward
-            next(progress_bar)
             # Update current state
             current_state = next_state.copy()
 
-            # Evaluate the agent every 250 steps
-            if current_step % 250 == 0:
+            # Evaluate the agent every 500 steps
+            if current_step % 500 == 0:
                 env_eval.reset(seed=42)
                 rewards_eval = []
-                for _ in range(10):
+                for _ in range(5):
                     current_state_eval = env_eval.reset()[0]
                     done_eval = False
                     reward_acc = 0
@@ -170,13 +182,18 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
                 if curriculum:
                     log_dict["train/curriculum"] = replay_buffer.curriculum
                 run.log(log_dict)
-                if average_reward_eval > 200:
-                    # Post-training code
-                    run.save
-                    run.finish()
-                    if save_agent:
-                        torch.save(model_policy.state_dict(), 'experimenting/models/trained_models/lunar_lander/' + run_name + '.pt')
-                    return
+
+            # Counters
+            current_step += 1 # Training step
+            train_reward += reward
+            try:
+                next(progress_bar)
+            except:
+                save_model_and_log_final_metrics()
+                return
+            if average_reward_eval > 200:
+                save_model_and_log_final_metrics()
+                return
             # If the episode is done, break the loop
             if done:
                 break
@@ -190,7 +207,6 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
             "train_ep/std_reward_eval": std_reward_eval
         }
         run.log(log_dict)
-
     # Post-training code
     run.save
     run.finish()
@@ -235,7 +251,6 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--percentile', metavar='P', type=int, help='percentage of already sorted top experiences, if 0, then all experiences will be considered, if 50, only the second half of orderd experiences is considered', default=0)
     # Misc arguments
     parser.add_argument('-env','--name_env', metavar='N', type=str, help='name of the environment', default='LunarLander-v2')
-    parser.add_argument('-r', '--resume', metavar='R', type=lambda x: bool(strtobool(x)), help='resume training', default=False)
     parser.add_argument('-pn', '--project_name', metavar='PN', type=str, help='name of the project in wandb', default='lunar_lander_final')
     parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
     parser.add_argument('-sa', '--save_agent', metavar='SA', type=lambda x: bool(strtobool(x)), help='save the agent', default=False)
@@ -269,7 +284,6 @@ if __name__ == '__main__':
     percentile = args.percentile
     # Misc arguments
     name_env = args.name_env
-    resume = args.resume
     project_name = args.project_name
     gpu = args.gpu
     save_agent = args.save_agent
@@ -282,6 +296,6 @@ if __name__ == '__main__':
                             learning_rate=learning_rate, tau=tau, first_layer_neurons=first_layer_neurons, second_layer_neurons=second_layer_neurons, 
                             initial_random_experiences=initial_random_experiences, 
                             memory_capacity=memory_capacity, max_train_steps_per_curriculum=max_train_steps_per_curriculum,
-                            percentile=percentile, resume=resume, project_name=project_name,
+                            percentile=percentile, project_name=project_name,
                             number_of_curriculums=number_of_curriculums, use_curriculum=curriculum, anti_curriculum=anti_curriculum, 
                             gpu=gpu, save_agent=save_agent, seed=seed, criterion_name=criterion_name)

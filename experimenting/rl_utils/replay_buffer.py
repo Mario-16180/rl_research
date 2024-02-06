@@ -17,7 +17,6 @@ class memory_lunar_lander():
         self.counter = 0
         self.flag_first_curriculum = True
         
-    
     def add(self, experience):
         self.buffer_deque.append(experience)
     

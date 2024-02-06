@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 
 def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, 
-                              minibatch, gamma, tau, temperature_factor, temperature_factor_optimizer, device, 
-                              batch_size, grad_clip_value=10, curriculum=False):
+                              minibatch, gamma, tau, temperature_factor, 
+                              device, grad_clip_value=10, curriculum=False):
     if curriculum:
         state_batch = torch.cat([torch.tensor([s], device=device, dtype=torch.float32) for (s, a, r, s_, d, td) in minibatch])
         action_batch = torch.cat([torch.tensor([a], device=device, dtype=torch.float32) for (s, a, r, s_, d, td)  in minibatch])
@@ -18,8 +18,7 @@ def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target,
         done_batch = torch.cat([torch.tensor([d], device=device, dtype=torch.bool) for (s, a, r, s_, d) in minibatch])
 
     # Update the temperature factor
-    
-
+    # WIP
 
     def inner_function_for_critic(state, reparameterize, device=device):
         actions, log_probs = actor.sample_action(state, reparameterize=reparameterize)
