@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import pickle
+from torch.distributions.normal import Normal
 
 """
 The architecture for the bipedal walker environment will consist of three networks since I will use soft actor critic.
@@ -49,12 +50,12 @@ class actor_network(nn.Module):
     
     def sample_action(self, state, reparameterize=True):
         mean, std = self.forward(state)
-        normal = torch.distributions.Normal(mean, std)
+        normal = Normal(mean, std)
         if reparameterize:
             z = normal.rsample()
         else:
             z = normal.sample()
-        action = torch.tanh(z).detach().cpu().numpy() # Range from -1 to 1
+        action = torch.tanh(z).to(self.device) # Range from -1 to 1, so we don't need to scale the actions since the action space is already from -1 to 1
         log_prob = normal.log_prob(z) # Taking the log of the probability density function of the normal distribution
         log_prob -= torch.log(torch.tensor(1 - action**2 + self.std_min, device=self.device, dtype=torch.float32))
         log_prob = log_prob.sum(1, keepdim=True) # Since the Jacobian of tanh is 1 - tanh(x)^2 and diagonal, we need to sum the log_probabilities

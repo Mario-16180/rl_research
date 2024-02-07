@@ -245,7 +245,7 @@ if __name__ == '__main__':
     parser.add_argument('-mc', '--memory_capacity', metavar='MC', type=int, help='size of the replay buffer', default=100000)
     # Curriculum related arguments
     parser.add_argument('-nc', '--number_of_curriculums', metavar='NC', type=int, help='number of curriculums', default=5)
-    parser.add_argument('-c', '--curriculum', metavar='C', type=lambda x: bool(strtobool(x)), help='use curriculum learning', default=False)
+    parser.add_argument('-c', '--curriculum', metavar='C', type=lambda x: bool(strtobool(x)), help='use curriculum learning', default=True)
     parser.add_argument('-ac', '--anti_curriculum', metavar='AC', type=lambda x: bool(strtobool(x)), help='going from easy to hard = false, hard to easy = true', default=False)
     parser.add_argument('-mcs', '--max_train_steps_per_curriculum', metavar='MCS', type=int, help='maximum number of training steps per curriculum', default=1000)
     parser.add_argument('-p', '--percentile', metavar='P', type=int, help='percentage of already sorted top experiences, if 0, then all experiences will be considered, if 50, only the second half of orderd experiences is considered', default=0)

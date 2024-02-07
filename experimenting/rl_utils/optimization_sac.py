@@ -20,12 +20,12 @@ def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target,
     # Update the temperature factor
     # WIP
 
-    def inner_function_for_critic(state, reparameterize, device=device):
-        actions, log_probs = actor.sample_action(state, reparameterize=reparameterize)
+    def inner_function_for_critic(reparameterize):
+        actions, log_probs = actor.sample_action(state_batch, reparameterize=reparameterize)
         log_probs = log_probs.view(-1)
-        actions = torch.tensor(actions, device=device, dtype=torch.float32)
-        q1 = critic_1(state, actions)
-        q2 = critic_2(state, actions)
+        # actions = torch.tensor(actions, device=device, dtype=torch.float32)
+        q1 = critic_1(state_batch, actions)
+        q2 = critic_2(state_batch, actions)
         critic_value = torch.min(q1, q2) # Proposed in the TD3 paper to deal with overestimation bias
         critic_value = critic_value.view(-1)
         return critic_value, log_probs
@@ -34,7 +34,7 @@ def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target,
     value_next_state = v_2_target(next_state_batch).view(-1)
 
     # Updating the value function
-    critic_value, log_probs = inner_function_for_critic(state_batch, reparameterize=False)
+    critic_value, log_probs = inner_function_for_critic(reparameterize=False)
     value_target = critic_value - log_probs
     value_loss = 0.5 * torch.nn.functional.mse_loss(value, value_target.detach())
     v_1.optimizer.zero_grad()
@@ -43,7 +43,7 @@ def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target,
     v_1.optimizer.step()
 
     # Updating the actor
-    critic_value, log_probs = inner_function_for_critic(state_batch, reparameterize=True)
+    critic_value, log_probs = inner_function_for_critic(reparameterize=True)
     actor_loss = (log_probs - critic_value).mean()
     actor.optimizer.zero_grad()
     actor_loss.backward(retain_graph=True)
@@ -54,8 +54,8 @@ def perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target,
     q_hat = temperature_factor * reward_batch + (1 - done_batch * 1) * (value_next_state * gamma)
     q_1 = critic_1(state_batch, action_batch).view(-1)
     q_2 = critic_2(state_batch, action_batch).view(-1)
-    critic_loss_1 = torch.nn.functional.mse_loss(q_1, q_hat.detach())
-    critic_loss_2 = torch.nn.functional.mse_loss(q_2, q_hat.detach())
+    critic_loss_1 = 0.5 * torch.nn.functional.mse_loss(q_1, q_hat.detach())
+    critic_loss_2 = 0.5 * torch.nn.functional.mse_loss(q_2, q_hat.detach())
     critic_loss = critic_loss_1 + critic_loss_2
     critic_1.optimizer.zero_grad()
     critic_2.optimizer.zero_grad()

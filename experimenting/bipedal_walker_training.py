@@ -70,7 +70,6 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
         if save_agent:
             torch.save(actor.state_dict(), 'experimenting/models/trained_models/bipedal_walker/' + run_name + '.pt')
 
-
     ##### Login to wandb + hyperparameters and metadata
     # Start a new wandb run to track this experiment
     ##### Login wandb + Hyperparameters and metadata
@@ -80,7 +79,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     project=project_name,
     # Track hyperparameters and run metadata
     config={
-    "architecture": "Lunar lander basic MLP",
+    "architecture": "Bipedal Walker Basic MLP",
     "environment": name_env,
     "learning_rate_actor": alpha,
     "learning_rate_critic": beta,
@@ -127,9 +126,9 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
             # Select an action
             current_state_tensor = torch.tensor([current_state], device=device, dtype=torch.float32)
             action, _ = actor.sample_action(current_state_tensor, reparameterize=False)
-            action = action.reshape(4)
+            action_numpy_copy = action.cpu().detach().numpy().copy().squeeze()
             # Perform the action
-            next_state, reward, done, _, info = env.step(action)
+            next_state, reward, done, _, info = env.step(action_numpy_copy)
             
             # Add experience transition to replay buffer, but if we are using curriculum learning, 
             # then calculate temporal difference error and save it as well
@@ -140,27 +139,25 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                     next_state_value = v_2_target(next_state_tensor)
                     current_q_1 = critic_1(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), torch.tensor([action], device=device, dtype=torch.float32))
                     current_q_2 = critic_2(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), torch.tensor([action], device=device, dtype=torch.float32))
-                    current_q = torch.min(current_q_1, current_q_2)
+                    current_q = torch.min(current_q_1, current_q_2) # To minimize overestimation
                     td_error = ((reward + gamma * next_state_value - current_q)**2).item()
                 # Add the experience transition to the replay buffer
-                replay_buffer.add((current_state, action, reward, next_state, done, td_error))
+                replay_buffer.add((current_state, action_numpy_copy, reward, next_state, done, td_error))
             else:
-                replay_buffer.add((current_state, action, reward, next_state, done))
+                replay_buffer.add((current_state, action_numpy_copy, reward, next_state, done))
                 
             # Perform optimization step
             if len(replay_buffer.buffer_deque) > batch_size:
                 # Get the minibatch from the replay buffer
                 minibatch = replay_buffer.sample(batch_size) 
-                actor_loss, critic_loss, value_loss = perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, 
-                                                                                minibatch, gamma, tau, temperature_factor,
-                                                                                device, grad_clip_value, use_curriculum)
+                actor_loss, critic_loss, value_loss = perform_optimization_step(actor, critic_1, critic_2, v_1, v_2_target, minibatch, gamma, tau, temperature_factor, device, grad_clip_value, use_curriculum)
 
             # Update the current state
             current_state = next_state.copy()
 
             ###### Logging to wandb
-            # Evaluate the agent every 500 steps
-            if current_step % 500 == 0:
+            # Evaluate the agent every 1000 steps
+            if current_step % 1000 == 0:
                 env_eval.reset(seed=42)
                 rewards_eval = []
                 for _ in range(5):
@@ -169,8 +166,8 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                     reward_acc = 0
                     for k in range(max_t):
                         action_eval, _ = actor.sample_action(torch.tensor([current_state_eval], device=device, dtype=torch.float32), reparameterize=False)
-                        action_eval = action_eval.reshape(4)
-                        next_state_eval, reward_eval, done_eval, _, info = env_eval.step(action_eval)
+                        action_eval_numpy_copy = action_eval.cpu().detach().numpy().copy().squeeze()
+                        next_state_eval, reward_eval, done_eval, _, info = env_eval.step(action_eval_numpy_copy)
                         current_state_eval = next_state_eval
                         reward_acc += reward_eval
                         if done_eval:
@@ -180,27 +177,29 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                 std_reward_eval = np.std(rewards_eval).item()
                 mean_reward_eval_smoothed.append(mean_reward_eval)
                 average_reward_eval = sum(mean_reward_eval_smoothed)/len(mean_reward_eval_smoothed)
-
                 # Calculating the gradients of the networks
                 squared_norm_gradients_actor = 0
                 for w in actor.parameters():
                     if w.grad is None:
+                        print("None gradient")
                         break
                     else:
                         squared_norm_gradients_actor += (torch.norm(w.grad)**2).item()
+                print(squared_norm_gradients_actor)
                 squared_norm_gradients_critic = 0
                 for w in critic_1.parameters():
                     if w.grad is None:
                         break
                     else:
                         squared_norm_gradients_critic += (torch.norm(w.grad)**2).item()
+                print(squared_norm_gradients_critic)
                 squared_norm_gradients_value = 0
                 for w in v_1.parameters():
                     if w.grad is None:
                         break
                     else:
                         squared_norm_gradients_value += (torch.norm(w.grad)**2).item()
-
+                print(squared_norm_gradients_value)
                 # Logging metrics to wandb
                 log_dict = {
                     "train/step": current_step,
@@ -209,10 +208,10 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
                     "train/squared_norm_gradients_actor": squared_norm_gradients_actor,
                     "train/squared_norm_gradients_critic": squared_norm_gradients_critic,
                     "train/squared_norm_gradients_value": squared_norm_gradients_value,
-                    "train/action_taken_1": action[0],
-                    "train/action_taken_2": action[1],
-                    "train/action_taken_3": action[2],
-                    "train/action_taken_4": action[3],
+                    "train/action_taken_1": action_numpy_copy[0],
+                    "train/action_taken_2": action_numpy_copy[1],
+                    "train/action_taken_3": action_numpy_copy[2],
+                    "train/action_taken_4": action_numpy_copy[3],
                     "train/actor_loss": actor_loss,
                     "train/critic_loss": critic_loss,
                     "train/q_1_loss": value_loss,
@@ -256,13 +255,19 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta,
     if save_agent:
         torch.save(actor.state_dict(), 'experimenting/models/trained_models/bipedal_walker/' + run_name + '.pt')
 
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
 if __name__ == "__main__":
     from distutils.util import strtobool
 
     parser = argparse.ArgumentParser(description='Arguments for training a SAC agent on the BipedalWalker environment')
     # Misc arguments
     parser.add_argument('--name_env', type=str, default="BipedalWalker-v3", help='Name of the environment')
-    parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
+    parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='1') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
     # Rest of the arguments
     parser.add_argument('--alpha', type=float, default=0.0003, help='Learning rate for the actor')
     parser.add_argument('--beta', type=float, default=0.0003, help='Learning rate for the critic')
@@ -270,11 +275,11 @@ if __name__ == "__main__":
     parser.add_argument('--use_curriculum', type=lambda x: bool(strtobool(x)), default=False, help='Whether to use curriculum learning')
     parser.add_argument('--max_optimization_steps', type=int, default=4000000, help='Maximum number of frame iterations where one optimization step is performed')
     parser.add_argument('--max_t', type=int, default=1600, help='Maximum number of steps per episode')
-    parser.add_argument('--batch_size', type=int, default=256, help='Batch size for the replay buffer')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for the replay buffer')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
     parser.add_argument('--tau', type=float, default=0.005, help='Soft update parameter for the target networks')
     parser.add_argument('--temperature_factor', type=float, default=1, help='Temperature factor for the soft actor critic algorithm')
-    parser.add_argument('--grad_clip_value', type=float, default=1.0, help='Value to clip the gradients to')
+    parser.add_argument('--grad_clip_value', type=float, default=10.0, help='Value to clip the gradients to')
     parser.add_argument('--n_neurons_first_layer', type=int, default=256, help='Number of neurons in the first layer')
     parser.add_argument('--n_neurons_second_layer', type=int, default=256, help='Number of neurons in the second layer')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Size of the replay buffer')
@@ -306,6 +311,8 @@ if __name__ == "__main__":
     anti_curriculum = args.anti_curriculum
     seed = args.seed
     save_agent = args.save_agent
+
+    set_seed(seed)
 
     train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_optimization_steps, max_t, batch_size, gamma, tau, temperature_factor,
                              grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, buffer_size, project_name, 

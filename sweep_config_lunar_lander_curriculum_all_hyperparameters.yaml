@@ -10,27 +10,28 @@ parameters:
     values: [2, 3, 4, 5, 6, 7, 8, 9, 10]
   anti_curriculum:
     values: [True, False]
-  max_train_steps_per_curriculum_criterion1:
-    values: [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]
+  max_train_steps_per_curriculum:
+    values: [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
   learning_rate:
-    min: 0.00005
-    max: 0.005
-  gamma:
-    values: [0.9, 0.95, 0.99]
-  tau:
     min: 0.0001
-    max: 0.01
+    max: 0.0015
+  gamma:
+    values: [0.985, 0.99, 0.995, 0.999, 0.9995]
+  tau:
+    values: [0.0001, 0.0005, 0.001, 0.005, 0.01]
   epsilon_decay:
-    min: 0.0075
-    max: 0.015
+    min: 0.0000075
+    max: 0.000015
   first_layer_neurons:
-    values: [32, 64, 128, 256]
+    values: [64, 128, 256]
   second_layer_neurons:
-    values: [32, 64, 128, 256]
+    values: [64, 128, 256]
   initial_random_experiences:
-    values: [5000, 10000, 20000, 25000, 30000, 35000, 40000, 45000, 50000]
+    values: [1024, 2048, 4096, 8192]
   memory_capacity:
     values: [50000, 75000, 100000]
   grad_clip_value:
-    min: 10
-    max: 1000
+    min: 0.5
+    max: 10.0
+  criterion:
+    values: ['MSE', 'Huber']
