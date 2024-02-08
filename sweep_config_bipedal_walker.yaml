@@ -6,24 +6,26 @@ metric:
   goal: maximize
   name: train/mean_reward_eval_smoothed
 parameters:
-  learning_rate:
+  alpha:
     min: 0.0001
-    max: 0.0015
+    max: 0.001
+  beta:
+    min: 0.0001
+    max: 0.001
+  theta:
+    min: 0.0001
+    max: 0.001
   gamma:
-    values: [0.985, 0.99, 0.995, 0.999, 0.9995]
+    min: 0.98
+    max: 0.9999
   tau:
-    values: [0.0001, 0.0005, 0.001, 0.005, 0.01]
-  epsilon_decay:
-    min: 0.0000075
-    max: 0.000015
-  first_layer_neurons:
-    values: [64, 128, 256]
-  second_layer_neurons:
-    values: [64, 128, 256]
-  initial_random_experiences:
-    values: [128, 256, 1024, 2048, 4096, 8192]
-  memory_capacity:
-    values: [50000, 75000, 100000]
+    min: 0.001
+    max: 0.01
   grad_clip_value:
     min: 0.1
-    max: 10.0
+    max: 15.0
+  functions_updates:
+    values: [1, 2, 3, 4, 5]
+  std_max:
+    min: 1
+    max: 20

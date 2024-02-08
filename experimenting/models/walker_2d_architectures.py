@@ -6,8 +6,8 @@ from torch.distributions.normal import Normal
 """
 The architecture for the bipedal walker environment will consist of three networks since I will use soft actor critic.
 The first network will be the actor, which will output the action to take.
-The second network will be the critic, which will output the V value of the state.
-The third network will be the Q network, which will output the Q value of the state-action pair.
+The second network will be the critic, which will output the Q value of the state-action pair.
+The third class will be for the temperature factor, which will be used to update the entropy of the policy.
 
 Info about the bipedal walker environment:
 - Observation space: Box(24,) (24 continuous values)
@@ -16,16 +16,24 @@ Info about the bipedal walker environment:
 
 """
 
+class temperature_factor_updater():
+    def __init__(self, lr, device) -> None:
+        self.device = device
+        self.alpha = 0.2 # Initial value for the temperature factor
+        self.target_entropy = -torch.prod(torch.Tensor(4).to(device=self.device)).item() # This is the target entropy for the policy, which is the maximum entropy of a Gaussian distribution. -4 because the action space is 4
+        self.log_alpha = torch.tensor(0.0, device=self.device, dtype=torch.float32, requires_grad=True)
+        self.optimizer = torch.optim.Adam([self.log_alpha], lr=lr)
+
 # Define the Actor network
 class actor_network(nn.Module):
-    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, std_max=2) -> None:
+    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, std_max) -> None:
         super(actor_network, self).__init__()
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
         self.n_neurons_first_layer = n_neurons_first_layer
         self.n_neurons_second_layer = n_neurons_second_layer
         self.device = device
-        self.std_min = 1e-6
+        self.std_min = 1e-8
         self.std_max = std_max
         self.build_network()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
