@@ -191,9 +191,9 @@ def train_dqn_lunar_lander(name_env, max_optimization_steps, max_steps, batch_si
             except:
                 save_model_and_log_final_metrics()
                 return
-            if average_reward_eval > 200:
-                save_model_and_log_final_metrics()
-                return
+            # if average_reward_eval > 200: # ONLY FOR THE HYPERPARAMETER SEARCH
+            #    save_model_and_log_final_metrics()
+            #    return
             # If the episode is done, break the loop
             if done:
                 break
