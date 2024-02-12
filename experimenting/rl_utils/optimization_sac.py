@@ -38,9 +38,9 @@ def perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic
     v_2_target.load_state_dict(target_weights)
     """
 
-    # Updating the critics first
+    # Updating the critics
     with torch.no_grad():
-        actions, log_probs = actor.sample_action(next_state_batch, reparameterize=True)
+        actions, log_probs, _, _ = actor.sample_action(next_state_batch, reparameterize=True)
         log_probs = log_probs.view(-1)
         q1_next_target = critic_1_target(next_state_batch, actions)
         q2_next_target = critic_2_target(next_state_batch, actions)
@@ -50,8 +50,8 @@ def perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic
         q_hat = reward_batch + (1 - done_batch * 1) * (min_next_value * gamma)
     q1 = critic_1(state_batch, action_batch).view(-1)
     q2 = critic_2(state_batch, action_batch).view(-1)
-    critic_loss_1 = torch.nn.functional.mse_loss(q1, q_hat)
-    critic_loss_2 = torch.nn.functional.mse_loss(q2, q_hat)
+    critic_loss_1 = 0.5 * torch.nn.functional.mse_loss(q1, q_hat)
+    critic_loss_2 = 0.5 * torch.nn.functional.mse_loss(q2, q_hat)
     critic_loss = critic_loss_1 + critic_loss_2
     critic_1.optimizer.zero_grad()
     critic_2.optimizer.zero_grad()
@@ -61,11 +61,11 @@ def perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic
     critic_1.optimizer.step()
     critic_2.optimizer.step()
 
-    # Updating the actor second
-    actions, log_probs = actor.sample_action(state_batch, reparameterize=True)
+    # Updating the actor
+    actions, log_probs, _, _ = actor.sample_action(state_batch, reparameterize=True)
     log_probs = log_probs.view(-1)
-    q1_actor = critic_1(state_batch, actions)
-    q2_actor = critic_2(state_batch, actions)
+    q1_actor = critic_1_target(state_batch, actions)
+    q2_actor = critic_2_target(state_batch, actions)
     min_value = torch.min(q1_actor, q2_actor) # Proposed in the TD3 paper to deal with overestimation bias
     actor_loss = (alpha_factor.alpha * log_probs - min_value).mean()
     actor.optimizer.zero_grad()
@@ -73,7 +73,7 @@ def perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic
     torch.nn.utils.clip_grad_norm_(actor.parameters(), grad_clip_value)
     actor.optimizer.step()
 
-    # Updating the alpha scale factor third
+    # Updating the alpha scale factor
     alpha_loss = - (alpha_factor.log_alpha * (log_probs + alpha_factor.target_entropy).detach()).mean()
     alpha_factor.optimizer.zero_grad()
     alpha_loss.backward()

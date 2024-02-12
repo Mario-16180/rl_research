@@ -5,7 +5,6 @@ PYTHON_EXECUTABLE=python
 
 # Specify your Python script and its arguments
 SCRIPT_PATH=experimenting/lunar_lander_training.py
-EPISODES=500
 BATCH_SIZE=64
 CRITERION_NAME="MSE"
 GRAD_CLIP_VALUE=6.095207206995203
@@ -29,7 +28,6 @@ SEEDS=(0 1 2 3 4 5 6 7 8 9 12 22 2023 420 69 1998 42 13 31 64)
 for SEED in "${SEEDS[@]}"
 do
     $PYTHON_EXECUTABLE $SCRIPT_PATH \
-        --episodes $EPISODES \
         --batch_size $BATCH_SIZE \
         --criterion_name "$CRITERION_NAME" \
         --grad_clip_value $GRAD_CLIP_VALUE \

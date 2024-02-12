@@ -26,15 +26,15 @@ class temperature_factor_updater():
 
 # Define the Actor network
 class actor_network(nn.Module):
-    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, std_max) -> None:
+    def __init__(self, lr, n_neurons_first_layer, n_neurons_second_layer, device, log_std_max) -> None:
         super(actor_network, self).__init__()
         self.action_size = 4 # Fixed size for the action space in the walker2d environment
         self.state_dim = 24 # Fixed size for the state space in the walker2d environment
         self.n_neurons_first_layer = n_neurons_first_layer
         self.n_neurons_second_layer = n_neurons_second_layer
         self.device = device
-        self.std_min = 1e-8
-        self.std_max = std_max
+        self.log_std_min = -20
+        self.log_std_max = log_std_max
         self.build_network()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         self.to(self.device)
@@ -52,12 +52,13 @@ class actor_network(nn.Module):
     def forward(self, state):
         x = self.network(state)
         mean = self.mean_fc(x)
-        std = self.std_fc(x)
-        std = torch.clamp(std, self.std_min, self.std_max)
-        return mean, std
+        log_std = self.std_fc(x)
+        log_std = torch.clamp(log_std, min=self.log_std_min, max=self.log_std_max)
+        return mean, log_std
     
     def sample_action(self, state, reparameterize=True):
-        mean, std = self.forward(state)
+        mean, log_std = self.forward(state)
+        std = log_std.exp() # Since the output of the network can lead to negative values, we need to exponentiate it to get the standard deviation
         normal = Normal(mean, std)
         if reparameterize:
             z = normal.rsample()
@@ -65,9 +66,10 @@ class actor_network(nn.Module):
             z = normal.sample()
         action = torch.tanh(z).to(self.device) # Range from -1 to 1, so we don't need to scale the actions since the action space is already from -1 to 1
         log_prob = normal.log_prob(z) # Taking the log of the probability density function of the normal distribution
-        log_prob -= torch.log(torch.tensor(1 - action**2 + self.std_min, device=self.device, dtype=torch.float32))
+        # log_prob -= torch.log(torch.tensor(1 - action**2 + 1e-8, device=self.device, dtype=torch.float32))
+        log_prob -= torch.log(1-action**2 + 1e-6)
         log_prob = log_prob.sum(1, keepdim=True) # Since the Jacobian of tanh is 1 - tanh(x)^2 and diagonal, we need to sum the log_probabilities
-        return action, log_prob
+        return action, log_prob, mean, std
     
     def save_model(self, episode, train_step, optimizer, loss, buffer, path):
         # Save the model

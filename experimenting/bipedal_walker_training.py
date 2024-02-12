@@ -17,14 +17,14 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 # Let's check if the environment is working
 
-def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_optimization_steps, max_t, batch_size, start_steps, functions_updates, gamma, 
-                             tau, grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, std_max, buffer_size, project_name,
+def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_frame_steps, max_t, batch_size, start_steps, functions_updates, gamma, 
+                             tau, grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, log_std_max, buffer_size, project_name,
                              number_of_curriculums, anti_curriculum, seed, save_agent):
     """
     alpha: learning rate for the actor
     beta: learning rate for the critic
     theta: learning rate for the alpha factor
-    max_optimization_steps: maximum number of optimization steps
+    max_frame_steps: maximum number of frame steps
     max_t: maximum number of steps per episode
     batch_size: batch size for the replay buffer
     gamma: discount factor
@@ -43,7 +43,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
         print(f"Using device: {device}")
 
     # Initialize the networks
-    actor = actor_network(lr=alpha, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device, std_max=std_max)
+    actor = actor_network(lr=alpha, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device, log_std_max=log_std_max)
     critic_1 = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
     critic_2 = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
     critic_1_target = critic_network(lr=beta, n_neurons_first_layer=n_neurons_first_layer, n_neurons_second_layer=n_neurons_second_layer, device=device)
@@ -86,11 +86,11 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
     "learning_rate_actor": alpha,
     "learning_rate_critic": beta,
     "learning_rate_q": theta,
-    "max_optimization_steps": max_optimization_steps,
+    "max_frame_steps": max_frame_steps,
     "batch_size": batch_size,
     "start_steps": start_steps,
     "gamma": gamma,
-    "std_max": std_max,
+    "log_std_max": log_std_max,
     "grad_clip_value": grad_clip_value,
     "n_neurons_first_layer": n_neurons_first_layer,
     "n_neurons_second_layer": n_neurons_second_layer,
@@ -110,7 +110,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
     run_name = run.name + name_env
 
     current_episode = 0
-    current_step = 0
+    current_frame_step = 0
     ##### End of wandb login
     mean_reward_eval_smoothed = deque(maxlen=100)
     mean_reward_eval = 0
@@ -123,20 +123,21 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
     alpha_value = 0
     q1_mean = 0
     q2_mean = 0
-    progress_bar = iter(tqdm(range(max_optimization_steps)))
+    current_optimization_steps = 0
+    progress_bar = iter(tqdm(range(max_frame_steps)))
     # Initialize the training loop
-    while current_step <= max_optimization_steps:
+    while current_frame_step <= max_frame_steps:
         current_state = env.reset()
         current_state = current_state[0]
         done = False
         total_reward = 0
         for i in range(max_t):
             # Select an action
-            if current_step < start_steps:
+            if current_frame_step < start_steps:
                 action = env.action_space.sample()
             else:
                 current_state_tensor = torch.tensor([current_state], device=device, dtype=torch.float32)
-                action_tensor, _ = actor.sample_action(current_state_tensor, reparameterize=False)
+                action_tensor, _, _, _ = actor.sample_action(current_state_tensor, reparameterize=False)
                 action = action_tensor.cpu().detach().numpy().copy().squeeze()
             # Perform the action
             next_state, reward, done, _, info = env.step(action)
@@ -147,7 +148,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                 # Calculate the temporal difference error
                 with torch.no_grad():
                     next_state_tensor = torch.tensor([next_state], device=device, dtype=torch.float32)
-                    actions, log_probs = actor.sample_action(next_state_tensor, reparameterize=True)
+                    actions, log_probs, _, _ = actor.sample_action(next_state_tensor, reparameterize=True)
                     log_probs = log_probs.view(-1)
                     q1_next_target = critic_1_target(next_state_tensor, actions)
                     q2_next_target = critic_2_target(next_state_tensor, actions)
@@ -168,7 +169,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
 
             ###### Logging to wandb
             # Evaluate the agent every 3000 steps
-            if current_step % 3000 == 0:
+            if current_frame_step % 3000 == 0:
                 env_eval.reset(seed=42)
                 rewards_eval = []
                 for _ in range(3):
@@ -176,7 +177,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                     done_eval = False
                     reward_acc = 0
                     for k in range(max_t):
-                        action_eval, _ = actor.sample_action(torch.tensor([current_state_eval], device=device, dtype=torch.float32), reparameterize=False)
+                        action_eval, _, mean, std = actor.sample_action(torch.tensor([current_state_eval], device=device, dtype=torch.float32), reparameterize=False)
                         action_eval_numpy_copy = action_eval.cpu().detach().numpy().copy().squeeze()
                         next_state_eval, reward_eval, done_eval, _, info = env_eval.step(action_eval_numpy_copy)
                         current_state_eval = next_state_eval
@@ -213,7 +214,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                 squared_norm_gradients_critic_2 = np.sqrt(squared_norm_gradients_critic_2)
                 # Logging metrics to wandb
                 log_dict = {
-                    "train/step": current_step,
+                    "train/step": current_frame_step,
                     "train/training_reward": reward,
                     "train/training_episode": current_episode,
                     "train/squared_norm_gradients_actor": squared_norm_gradients_actor,
@@ -241,7 +242,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                 ###### End of logging to wandb of inner loop
             
             total_reward += reward #  Accumulate reward of a training episode
-            current_step += 1 #  Train step counter
+            current_frame_step += 1 #  Train step counter
             try:
                 next(progress_bar)
             except:
@@ -253,6 +254,14 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
             # Check if the episode is done
             if done:
                 break
+        # Perform optimization step after the episode is done
+        if len(replay_buffer.buffer_deque) > batch_size and current_frame_step > start_steps:
+            for _ in range(functions_updates):
+                # Get the minibatch from the replay buffer
+                minibatch = replay_buffer.sample(batch_size) 
+                actor_loss, critic_loss_1, critic_loss_2, alpha_loss, q1_mean, q2_mean, alpha_value = perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic_2_target, 
+                                                                                                                                alpha_factor, minibatch, gamma, tau, device, grad_clip_value, use_curriculum)
+                current_optimization_steps += 1
         current_episode += 1 
         ## Outer loop logging
         # Logging the total reward of the training episode
@@ -261,18 +270,11 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
             "train_ep/episode": current_episode,
             "train_ep/mean_reward_eval": mean_reward_eval,
             "train_ep/mean_reward_eval_smoothed": average_reward_eval,
-            "train_ep/std_reward_eval": std_reward_eval
+            "train_ep/std_reward_eval": std_reward_eval,
+            "train_ep/current_optimization_steps": current_optimization_steps,
         }
         run.log(log_dict)
-
-        # Perform optimization step after the episode is done
-        if len(replay_buffer.buffer_deque) > batch_size and current_step > start_steps:
-            for _ in range(functions_updates):
-                # Get the minibatch from the replay buffer
-                minibatch = replay_buffer.sample(batch_size) 
-                actor_loss, critic_loss_1, critic_loss_2, alpha_loss, q1_mean, q2_mean, alpha_value = perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic_2_target, 
-                                                                                                                                alpha_factor, minibatch, gamma, tau, device, grad_clip_value, use_curriculum)
-
+    
     # Post-training code
     run.save
     run.finish()
@@ -297,9 +299,9 @@ if __name__ == "__main__":
     parser.add_argument('--beta', type=float, default=0.0003, help='Learning rate for the critic')
     parser.add_argument('--theta', type=float, default=0.0003, help='Learning rate for the q network')
     parser.add_argument('--use_curriculum', type=lambda x: bool(strtobool(x)), default=False, help='Whether to use curriculum learning')
-    parser.add_argument('--max_optimization_steps', type=int, default=1000000, help='Maximum number of frame iterations where one optimization step is performed')
+    parser.add_argument('--max_frame_steps', type=int, default=4000000, help='Maximum number of frame iterations where one optimization step is performed')
     parser.add_argument('--max_t', type=int, default=1600, help='Maximum number of steps per episode')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for the replay buffer')
+    parser.add_argument('--batch_size', type=int, default=128, help='Batch size for the replay buffer')
     parser.add_argument('--start_steps', type=int, default=10000, help='Number of steps to take before starting to optimize the networks')
     parser.add_argument('--functions_updates', type=int, default=2, help='Number of optimization steps to take per update frequency')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
@@ -307,7 +309,7 @@ if __name__ == "__main__":
     parser.add_argument('--grad_clip_value', type=float, default=10.0, help='Value to clip the gradients to')
     parser.add_argument('--n_neurons_first_layer', type=int, default=256, help='Number of neurons in the first layer')
     parser.add_argument('--n_neurons_second_layer', type=int, default=256, help='Number of neurons in the second layer')
-    parser.add_argument('--std_max', type=float, default=2.0, help='Maximum value for the standard deviation of the Gaussian distribution')
+    parser.add_argument('--log_std_max', type=float, default=2.0, help='Maximum value for the log standard deviation of the Gaussian distribution')
     parser.add_argument('--buffer_size', type=int, default=1000000, help='Size of the replay buffer')
     parser.add_argument('--project_name', type=str, default="sac_bipedal_walker", help='Name of the wandb project')
     parser.add_argument('--number_of_curriculums', type=int, default=5, help='Number of curriculums to use')
@@ -322,7 +324,7 @@ if __name__ == "__main__":
     beta = args.beta
     theta = args.theta
     use_curriculum = args.use_curriculum
-    max_optimization_steps = args.max_optimization_steps
+    max_frame_steps = args.max_frame_steps
     max_t = args.max_t
     batch_size = args.batch_size
     start_steps = args.start_steps
@@ -332,7 +334,7 @@ if __name__ == "__main__":
     grad_clip_value = args.grad_clip_value
     n_neurons_first_layer = args.n_neurons_first_layer
     n_neurons_second_layer = args.n_neurons_second_layer
-    std_max = args.std_max
+    log_std_max = args.log_std_max
     buffer_size = args.buffer_size
     project_name = args.project_name
     number_of_curriculums = args.number_of_curriculums
@@ -342,7 +344,7 @@ if __name__ == "__main__":
 
     set_seed(seed)
 
-    train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_optimization_steps, max_t, batch_size, 
+    train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_frame_steps, max_t, batch_size, 
                              start_steps, functions_updates, gamma, tau, grad_clip_value, n_neurons_first_layer, 
-                             n_neurons_second_layer, std_max, buffer_size, project_name, 
+                             n_neurons_second_layer, log_std_max, buffer_size, project_name, 
                              number_of_curriculums, anti_curriculum, seed, save_agent)
