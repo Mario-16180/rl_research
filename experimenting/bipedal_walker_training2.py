@@ -11,7 +11,7 @@ from tqdm import tqdm
 from collections import deque
 from models.walker_2d_architectures import critic_network, actor_network, temperature_factor_updater
 from rl_utils.replay_buffer import memory_bipedal_walker as memory
-from rl_utils.optimization_sac import perform_optimization_step
+from rl_utils.optimization_sac2 import perform_optimization_step
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
 
@@ -151,16 +151,14 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                     actions, log_probs, _, _ = actor.sample_action(next_state_tensor, reparameterize=True)
                     log_probs = log_probs.view(-1)
                     q1_next_target = critic_1_target(next_state_tensor, actions)
-                    q1_next_target = q1_next_target.view(-1)
-                    q1_next_target -= alpha_factor.alpha * log_probs
-                    #q2_next_target = critic_2_target(next_state_tensor, actions)
-                    #min_next_value = torch.min(q1_next_target, q2_next_target) # Proposed in the TD3 paper to deal with overestimation bias
-                    #min_next_value = min_next_value.view(-1)
-                    #min_next_value -= alpha_factor.alpha * log_probs
+                    q2_next_target = critic_2_target(next_state_tensor, actions)
+                    min_next_value = torch.min(q1_next_target, q2_next_target) # Proposed in the TD3 paper to deal with overestimation bias
+                    min_next_value = min_next_value.view(-1)
+                    min_next_value -= alpha_factor.alpha * log_probs
                     current_q_1 = critic_1(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), action_tensor)
-                    #current_q_2 = critic_2(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), action_tensor)
-                    #current_q = torch.min(current_q_1, current_q_2) # To minimize overestimation
-                    td_error = ((reward + gamma * q1_next_target - current_q_1)**2).item()
+                    current_q_2 = critic_2(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), action_tensor)
+                    current_q = torch.min(current_q_1, current_q_2) # To minimize overestimation
+                    td_error = ((reward + gamma * min_next_value - current_q)**2).item()
                 # Add the experience transition to the replay buffer
                 replay_buffer.add((current_state, action, reward, next_state, done, td_error))
             else:
@@ -261,8 +259,8 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
             for _ in range(functions_updates):
                 # Get the minibatch from the replay buffer
                 minibatch = replay_buffer.sample(batch_size) 
-                actor_loss, critic_loss_1, alpha_loss, q1_mean, alpha_value = perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic_2_target, 
-                                                                                                        alpha_factor, minibatch, gamma, tau, device, grad_clip_value, use_curriculum)
+                actor_loss, critic_loss_1, critic_loss_2, alpha_loss, q1_mean, q2_mean, alpha_value = perform_optimization_step(actor, critic_1, critic_2, critic_1_target, critic_2_target, 
+                                                                                                                                alpha_factor, minibatch, gamma, tau, device, grad_clip_value, use_curriculum)
                 current_optimization_steps += 1
         current_episode += 1 
         ## Outer loop logging
@@ -295,7 +293,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Arguments for training a SAC agent on the BipedalWalker environment')
     # Misc arguments
     parser.add_argument('--name_env', type=str, default="BipedalWalker-v3", help='Name of the environment')
-    parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='3') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
+    parser.add_argument('-gpu', '--gpu', metavar='GPU', type=str, help='gpu to use', default='5') # Only 3 and 4 should be used. Number 2 could also be used but check availability first
     # Rest of the arguments
     parser.add_argument('--alpha', type=float, default=0.0003, help='Learning rate for the actor')
     parser.add_argument('--beta', type=float, default=0.0003, help='Learning rate for the critic')
@@ -303,7 +301,7 @@ if __name__ == "__main__":
     parser.add_argument('--use_curriculum', type=lambda x: bool(strtobool(x)), default=False, help='Whether to use curriculum learning')
     parser.add_argument('--max_frame_steps', type=int, default=4000000, help='Maximum number of frame iterations where one optimization step is performed')
     parser.add_argument('--max_t', type=int, default=1600, help='Maximum number of steps per episode')
-    parser.add_argument('--batch_size', type=int, default=256, help='Batch size for the replay buffer')
+    parser.add_argument('--batch_size', type=int, default=128, help='Batch size for the replay buffer')
     parser.add_argument('--start_steps', type=int, default=10000, help='Number of steps to take before starting to optimize the networks')
     parser.add_argument('--functions_updates', type=int, default=2, help='Number of optimization steps to take per update frequency')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')

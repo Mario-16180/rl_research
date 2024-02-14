@@ -1,6 +1,6 @@
-name: vanilla_sac_bipedal_walker_256batch
+name: policy_loss_as_paper
 project: bipedal_walker_final
-program: experimenting/bipedal_walker_training.py
+program: experimenting/bipedal_walker_training2.py
 method: bayes
 metric:
   goal: maximize
