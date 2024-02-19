@@ -89,6 +89,7 @@ class memory_bipedal_walker():
         self.anti_curriculum = anti_curriculum
         self.percentile = percentile
         self.counter = 0
+        self.current_curriculum = 0
         self.flag_first_curriculum = True
 
     def add(self, experience):

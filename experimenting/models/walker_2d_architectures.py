@@ -19,7 +19,7 @@ Info about the bipedal walker environment:
 class temperature_factor_updater():
     def __init__(self, lr, device) -> None:
         self.device = device
-        self.alpha = 0.2 # Initial value for the temperature factor
+        self.alpha = 1.0 # Initial value for the temperature factor
         self.target_entropy = -torch.prod(torch.Tensor(4).to(device=self.device)).item() # This is the target entropy for the policy, which is the maximum entropy of a Gaussian distribution. -4 because the action space is 4
         self.log_alpha = torch.zeros(1, device=self.device, dtype=torch.float32, requires_grad=True)
         self.optimizer = torch.optim.Adam([self.log_alpha], lr=lr)

@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_frame_steps, max_t, batch_size, start_steps, functions_updates, gamma, 
                              tau, grad_clip_value, n_neurons_first_layer, n_neurons_second_layer, log_std_max, buffer_size, project_name,
-                             number_of_curriculums, anti_curriculum, seed, save_agent):
+                             number_of_curriculums, anti_curriculum, max_train_steps_per_curriculum, seed, save_agent):
     """
     alpha: learning rate for the actor
     beta: learning rate for the critic
@@ -53,7 +53,8 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
     alpha_factor = temperature_factor_updater(lr=theta, device=device)
 
     # Initialize the replay buffer
-    replay_buffer = memory(buffer_size=buffer_size)
+    replay_buffer = memory(buffer_size=buffer_size, use_curriculum=use_curriculum, max_steps_per_curriculum=max_train_steps_per_curriculum, 
+                           n_curriculums=number_of_curriculums, anti_curriculum=anti_curriculum)
 
     # Auxiliar function to save the model and log final metrics
     def save_model_and_log_final_metrics():
@@ -148,6 +149,8 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                 # Calculate the temporal difference error
                 with torch.no_grad():
                     next_state_tensor = torch.tensor([next_state], device=device, dtype=torch.float32)
+                    current_state_tensor = torch.tensor([current_state], device=device, dtype=torch.float32)
+                    action_to_tensor = torch.tensor([action], device=device, dtype=torch.float32)
                     actions, log_probs, _, _ = actor.sample_action(next_state_tensor, reparameterize=True)
                     log_probs = log_probs.view(-1)
                     q1_next_target = critic_1_target(next_state_tensor, actions)
@@ -157,7 +160,7 @@ def train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, 
                     #min_next_value = torch.min(q1_next_target, q2_next_target) # Proposed in the TD3 paper to deal with overestimation bias
                     #min_next_value = min_next_value.view(-1)
                     #min_next_value -= alpha_factor.alpha * log_probs
-                    current_q_1 = critic_1(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), action_tensor)
+                    current_q_1 = critic_1(current_state_tensor, action_to_tensor)
                     #current_q_2 = critic_2(torch.tensor([current_state_tensor], device=device, dtype=torch.float32), action_tensor)
                     #current_q = torch.min(current_q_1, current_q_2) # To minimize overestimation
                     td_error = ((reward + gamma * q1_next_target - current_q_1)**2).item()
@@ -300,7 +303,7 @@ if __name__ == "__main__":
     parser.add_argument('--alpha', type=float, default=0.0003, help='Learning rate for the actor')
     parser.add_argument('--beta', type=float, default=0.0003, help='Learning rate for the critic')
     parser.add_argument('--theta', type=float, default=0.0003, help='Learning rate for the q network')
-    parser.add_argument('--use_curriculum', type=lambda x: bool(strtobool(x)), default=False, help='Whether to use curriculum learning')
+    parser.add_argument('--use_curriculum', type=lambda x: bool(strtobool(x)), default=True, help='Whether to use curriculum learning')
     parser.add_argument('--max_frame_steps', type=int, default=4000000, help='Maximum number of frame iterations where one optimization step is performed')
     parser.add_argument('--max_t', type=int, default=1600, help='Maximum number of steps per episode')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size for the replay buffer')
@@ -316,6 +319,7 @@ if __name__ == "__main__":
     parser.add_argument('--project_name', type=str, default="sac_bipedal_walker", help='Name of the wandb project')
     parser.add_argument('--number_of_curriculums', type=int, default=5, help='Number of curriculums to use')
     parser.add_argument('--anti_curriculum', type=lambda x: bool(strtobool(x)), default=False, help='Whether to use anti-curriculum')
+    parser.add_argument('--max_train_steps_per_curriculum', type=int, default=1000, help='Maximum number of training steps per curriculum')
     parser.add_argument('--seed', type=int, default=42, help='Seed for reproducibility')
     parser.add_argument('--save_agent', type=lambda x: bool(strtobool(x)), default=False, help='Whether to save the agent or not')
     args = parser.parse_args()
@@ -341,6 +345,7 @@ if __name__ == "__main__":
     project_name = args.project_name
     number_of_curriculums = args.number_of_curriculums
     anti_curriculum = args.anti_curriculum
+    max_train_steps_per_curriculum = args.max_train_steps_per_curriculum
     seed = args.seed
     save_agent = args.save_agent
 
@@ -349,4 +354,4 @@ if __name__ == "__main__":
     train_sac_bipedal_walker(name_env, gpu, alpha, beta, theta, use_curriculum, max_frame_steps, max_t, batch_size, 
                              start_steps, functions_updates, gamma, tau, grad_clip_value, n_neurons_first_layer, 
                              n_neurons_second_layer, log_std_max, buffer_size, project_name, 
-                             number_of_curriculums, anti_curriculum, seed, save_agent)
+                             number_of_curriculums, anti_curriculum, max_train_steps_per_curriculum, seed, save_agent)
